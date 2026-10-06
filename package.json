@@ -1,0 +1,29 @@
+{
+  "name": "armss-ott",
+  "version": "1.0.0",
+  "private": true,
+  "description": "ARMSS-OTT Full-Stack Enterprise Streaming Platform",
+  "workspaces": [
+    "frontend"
+  ],
+  "scripts": {
+    "dev": "npm --prefix frontend run dev",
+    "build": "npm --prefix frontend run build",
+    "preview": "npm --prefix frontend run preview",
+    "typecheck": "npm --prefix frontend run typecheck",
+    "lint": "npm --prefix frontend run lint",
+    "backend:dev": "cd backend && go run main.go",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down",
+    "docker:logs": "docker compose logs -f"
+  },
+  "keywords": [
+    "streaming",
+    "ott",
+    "react",
+    "golang",
+    "video"
+  ],
+  "author": "ARMSS Groups",
+  "license": "UNLICENSED"
+}

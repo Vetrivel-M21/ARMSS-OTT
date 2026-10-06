@@ -1,0 +1,338 @@
+@import "tailwindcss";
+
+@theme {
+  /* ─── Core palette ─── */
+  --color-bg: oklch(12% 0.005 285);
+  --color-fg: oklch(98% 0.002 270);
+  --color-muted: oklch(74% 0.01 270);
+  --color-subtle: oklch(50% 0.01 270);
+  --color-elevated: oklch(19% 0.012 285);
+  --color-surface: oklch(16% 0.01 285);
+  --color-border: oklch(98% 0.002 270 / 0.12);
+  --color-accent: oklch(98% 0.002 270);
+  --color-accent-fg: oklch(12% 0.005 285);
+  --color-match: oklch(75% 0.18 145);
+  --color-live: oklch(56% 0.23 25);
+
+  /* ─── 19-tone editorial poster palette ─── */
+  --color-tone-ice:    oklch(28% 0.045 225);
+  --color-tone-fog:    oklch(24% 0.020 250);
+  --color-tone-signal: oklch(22% 0.040 240);
+  --color-tone-ember:  oklch(23% 0.052 30);
+  --color-tone-orbit:  oklch(20% 0.038 260);
+  --color-tone-choir:  oklch(18% 0.010 270);
+  --color-tone-marble: oklch(23% 0.022 300);
+  --color-tone-velvet: oklch(19% 0.042 290);
+  --color-tone-mesa:   oklch(23% 0.042 52);
+  --color-tone-after:  oklch(21% 0.032 162);
+  --color-tone-ink:    oklch(15% 0.005 260);
+  --color-tone-forest: oklch(21% 0.042 145);
+  --color-tone-copper: oklch(23% 0.042 55);
+  --color-tone-court:  oklch(22% 0.022 240);
+  --color-tone-bloom:  oklch(22% 0.042 320);
+  --color-tone-sky:    oklch(24% 0.042 240);
+  --color-tone-moss:   oklch(22% 0.042 145);
+  --color-tone-pixel:  oklch(21% 0.042 278);
+  --color-tone-live:   oklch(17% 0.062 22);
+
+  /* ─── Typography ─── */
+  --font-sans:    "Outfit", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Instrument Serif", ui-serif, Georgia, serif;
+  --font-mono:    ui-monospace, "Cascadia Code", monospace;
+
+  /* ─── Shadows ─── */
+  --shadow-border:       inset 0 0 0 1px oklch(97% 0.002 270 / 0.10);
+  --shadow-border-hover: inset 0 0 0 1px oklch(97% 0.002 270 / 0.22);
+
+  /* ─── Sizing tokens ─── */
+  --height-hero: 86svh;
+}
+
+/* ─────────────────────────────────────────
+   Base resets
+───────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  background-color: var(--color-bg);
+  color: var(--color-fg);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+button,
+[role="button"] {
+  cursor: pointer;
+}
+
+:focus-visible {
+  outline: 2px solid oklch(97% 0.002 270 / 0.5);
+  outline-offset: 2px;
+}
+
+/* ─────────────────────────────────────────
+   Sizing / layout utilities
+───────────────────────────────────────── */
+.h-hero {
+  height: var(--height-hero);
+  min-height: 480px;
+}
+
+.aspect-poster { aspect-ratio: 2 / 3; }
+.aspect-wide   { aspect-ratio: 16 / 9; }
+
+/* ─────────────────────────────────────────
+   Hero gradients
+───────────────────────────────────────── */
+.hero-scrim {
+  background: linear-gradient(
+    to bottom,
+    oklch(13% 0.005 285 / 0.25) 0%,
+    oklch(13% 0.005 285 / 0.00) 28%,
+    oklch(13% 0.005 285 / 0.00) 48%,
+    oklch(13% 0.005 285 / 0.65) 78%,
+    oklch(13% 0.005 285 / 1.00) 100%
+  );
+}
+
+.hero-floor {
+  background: linear-gradient(
+    to right,
+    oklch(13% 0.005 285 / 0.92) 0%,
+    oklch(13% 0.005 285 / 0.62) 38%,
+    oklch(13% 0.005 285 / 0.00) 68%
+  );
+}
+
+.title-floor {
+  background: linear-gradient(
+    to bottom,
+    oklch(13% 0.005 285 / 0.00) 0%,
+    oklch(13% 0.005 285 / 0.55) 52%,
+    oklch(13% 0.005 285 / 1.00) 100%
+  );
+}
+
+/* ─────────────────────────────────────────
+   Film grain (editorial poster overlay)
+───────────────────────────────────────── */
+.film-grain {
+  position: relative;
+  overflow: hidden;
+}
+
+.film-grain::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.80' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.10'/%3E%3C/svg%3E");
+  background-size: 200px 200px;
+  mix-blend-mode: overlay;
+  opacity: 0.55;
+}
+
+/* ─────────────────────────────────────────
+   Rank number — stroke outline style (Top 10)
+───────────────────────────────────────── */
+.rank-num {
+  color: oklch(14% 0.005 285);
+  -webkit-text-stroke: 2.5px oklch(98% 0.002 270 / 0.55);
+  text-stroke: 2.5px oklch(98% 0.002 270 / 0.55);
+  paint-order: stroke fill;
+  font-family: var(--font-sans);
+  font-weight: 900;
+  line-height: 0.8;
+  letter-spacing: -0.06em;
+  user-select: none;
+  font-size: 5.5rem;
+  filter: drop-shadow(0 4px 16px rgba(0, 0, 0, 0.95));
+}
+
+@media (min-width: 640px) {
+  .rank-num {
+    font-size: 6.8rem;
+    -webkit-text-stroke: 3.5px oklch(98% 0.002 270 / 0.6);
+    text-stroke: 3.5px oklch(98% 0.002 270 / 0.6);
+  }
+}
+
+@media (min-width: 1024px) {
+  .rank-num {
+    font-size: 7.5rem;
+    -webkit-text-stroke: 4px oklch(98% 0.002 270 / 0.65);
+    text-stroke: 4px oklch(98% 0.002 270 / 0.65);
+  }
+}
+
+/* ─────────────────────────────────────────
+   Horizontal scroll row — hide native scrollbar
+───────────────────────────────────────── */
+.scroll-row {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.scroll-row::-webkit-scrollbar { display: none; }
+
+/* ─────────────────────────────────────────
+   Animations
+───────────────────────────────────────── */
+
+/* Ken Burns slow zoom on backdrop images */
+@keyframes kenburns {
+  0%   { transform: scale(1.04) translate( 0.6%,  0.4%); }
+  50%  { transform: scale(1.10) translate(-0.4%, -0.6%); }
+  100% { transform: scale(1.04) translate( 0.6%,  0.4%); }
+}
+.kenburns {
+  animation: kenburns 22s ease-in-out infinite alternate;
+}
+
+/* Stagger-in entrance (hero text, boot splash) */
+@keyframes stagger-in-kf {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.stagger-in {
+  animation: stagger-in-kf 0.52s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* Live dot pulse */
+@keyframes live-pulse {
+  0%   { box-shadow: 0 0 0 0   oklch(52% 0.22 25 / 0.55); }
+  70%  { box-shadow: 0 0 0 6px oklch(52% 0.22 25 / 0.00); }
+  100% { box-shadow: 0 0 0 0   oklch(52% 0.22 25 / 0.00); }
+}
+.live-dot {
+  box-shadow: 0 0 0 0 oklch(52% 0.22 25 / 0.55);
+  animation: live-pulse 1.8s ease-out infinite;
+}
+
+/* Fade-in for modals / overlays */
+@keyframes fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.fade-in { animation: fade-in 0.2s ease both; }
+
+/* Scale-in for modals */
+@keyframes scale-in {
+  from { opacity: 0; transform: scale(0.96) translateY(6px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+.scale-in { animation: scale-in 0.22s cubic-bezier(0.22, 1, 0.36, 1) both; }
+
+/* Spinner */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+.spin { animation: spin 0.8s linear infinite; }
+
+/* Double-tap flash feedback */
+@keyframes seek-flash {
+  0%   { opacity: 0.5; }
+  100% { opacity: 0; }
+}
+.seek-flash { animation: seek-flash 0.5s ease-out both; }
+
+/* ─────────────────────────────────────────
+   Cinematic Movie Wall Animations
+───────────────────────────────────────── */
+@keyframes movie-wall-scroll-left {
+  0% { transform: translate3d(0, 0, 0); }
+  100% { transform: translate3d(-50%, 0, 0); }
+}
+
+@keyframes movie-wall-scroll-right {
+  0% { transform: translate3d(-50%, 0, 0); }
+  100% { transform: translate3d(0, 0, 0); }
+}
+
+@keyframes ken-burns-wall {
+  0%, 100% {
+    transform: scale(1.12) rotate(-5deg);
+  }
+  50% {
+    transform: scale(1.18) rotate(-4deg);
+  }
+}
+
+.animate-movie-wall-left-fast {
+  animation: movie-wall-scroll-left 48s linear infinite;
+  will-change: transform;
+}
+
+.animate-movie-wall-right-slow {
+  animation: movie-wall-scroll-right 58s linear infinite;
+  will-change: transform;
+}
+
+.animate-movie-wall-left-slow {
+  animation: movie-wall-scroll-left 64s linear infinite;
+  will-change: transform;
+}
+
+.animate-movie-wall-right-fast {
+  animation: movie-wall-scroll-right 52s linear infinite;
+  will-change: transform;
+}
+
+.animate-ken-burns-wall {
+  animation: ken-burns-wall 35s ease-in-out infinite;
+  will-change: transform;
+}
+
+/* ─────────────────────────────────────────
+   Cinema Projector Beam & Flare Animations
+───────────────────────────────────────── */
+@keyframes projector-beam-sweep {
+  0% {
+    transform: rotate(-16deg) scaleX(1) scaleY(1);
+    opacity: 0.38;
+  }
+  35% {
+    transform: rotate(-10deg) scaleX(1.18) scaleY(1.08);
+    opacity: 0.6;
+  }
+  70% {
+    transform: rotate(-22deg) scaleX(0.92) scaleY(0.96);
+    opacity: 0.45;
+  }
+  100% {
+    transform: rotate(-16deg) scaleX(1) scaleY(1);
+    opacity: 0.38;
+  }
+}
+
+@keyframes anamorphic-streak {
+  0%, 100% {
+    transform: scaleX(0.92) translateY(0);
+    opacity: 0.35;
+  }
+  50% {
+    transform: scaleX(1.12) translateY(10px);
+    opacity: 0.65;
+  }
+}
+
+@keyframes projector-flicker {
+  0%, 100% { opacity: 0.95; }
+  15% { opacity: 0.86; }
+  35% { opacity: 1; }
+  65% { opacity: 0.9; }
+  85% { opacity: 0.97; }
+}
+
+.animate-projector-beam {
+  animation: projector-beam-sweep 22s ease-in-out infinite, projector-flicker 5s ease-in-out infinite;
+  transform-origin: 0% 0%;
+  will-change: transform, opacity;
+}
+
+.animate-anamorphic-streak {
+  animation: anamorphic-streak 14s ease-in-out infinite;
+  will-change: transform, opacity;
+}

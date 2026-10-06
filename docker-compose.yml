@@ -1,0 +1,89 @@
+version: '3.8'
+
+services:
+  # ----------------------------------------------------
+  # MySQL Database Service (MySQL 8.0)
+  # ----------------------------------------------------
+  mysql:
+    image: mysql:8.0
+    container_name: armss_ott_mysql
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_PASSWORD:-Vetri@123}
+      MYSQL_DATABASE: armss_ott
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    networks:
+      - armss_ott_network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_PASSWORD:-Vetri@123}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+  # ----------------------------------------------------
+  # ARMSS-OTT Backend Service (Go + Chi + MySQL)
+  # ----------------------------------------------------
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: armss_ott_backend
+    restart: always
+    ports:
+      - "8081:8081"
+    environment:
+      - PORT=8081
+      - ENV=production
+      - JWT_SECRET=${JWT_SECRET:-armss-ott-production-super-secret-jwt-key-2026-min-32}
+      - MYSQL_HOST=mysql
+      - MYSQL_PORT=3306
+      - MYSQL_USER=root
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD:-Vetri@123}
+      - MYSQL_DB=armss_ott
+      - UPLOADS_DIR=/app/public/uploads
+      - ALLOWED_ORIGINS=http://localhost:8080,http://127.0.0.1:8080,http://localhost:3000,http://localhost,http://localhost:8081
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-91550463965-0lmm9iu9h5fes5i3lh7qhme986s4va6u.apps.googleusercontent.com}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-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}
+    volumes:
+      - backend_uploads:/app/public/uploads
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - armss_ott_network
+
+  # ----------------------------------------------------
+  # ARMSS-OTT Frontend Service (React 19 + TanStack Start SSR)
+  # ----------------------------------------------------
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        - VITE_API_BASE_URL=http://localhost:8081/api
+        - VITE_GOOGLE_CLIENT_ID=91550463965-0lmm9iu9h5fes5i3lh7qhme986s4va6u.apps.googleusercontent.com
+    container_name: armss_ott_frontend
+    restart: always
+    ports:
+      - "8080:8080"
+    environment:
+      - PORT=8080
+      - NODE_ENV=production
+    depends_on:
+      - backend
+    networks:
+      - armss_ott_network
+
+volumes:
+  mysql_data:
+    driver: local
+  backend_uploads:
+    driver: local
+
+networks:
+  armss_ott_network:
+    driver: bridge
