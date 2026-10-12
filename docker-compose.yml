@@ -25,7 +25,70 @@ services:
       start_period: 15s
 
   # ----------------------------------------------------
-  # ARMSS-OTT Backend Service (Go + Chi + MySQL)
+  # Redis Service (Task Queue for Asynq)
+  # ----------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: armss_ott_redis
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - armss_ott_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # ----------------------------------------------------
+  # MinIO Service (S3-Compatible Object Storage)
+  # ----------------------------------------------------
+  minio:
+    image: minio/minio:latest
+    container_name: armss_ott_minio
+    restart: always
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    networks:
+      - armss_ott_network
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ----------------------------------------------------
+  # MinIO Init (Auto-create "masters" and "hls" buckets)
+  # ----------------------------------------------------
+  minio-init:
+    image: minio/mc:latest
+    container_name: armss_ott_minio_init
+    depends_on:
+      - minio
+    networks:
+      - armss_ott_network
+    entrypoint: >
+      /bin/sh -c "
+      /usr/bin/mc alias set local http://minio:9000 minioadmin minioadmin;
+      /usr/bin/mc mb --ignore-existing local/masters;
+      /usr/bin/mc mb --ignore-existing local/hls;
+      /usr/bin/mc anonymous set download local/hls;
+      echo 'MinIO buckets masters and hls initialized successfully.';
+      exit 0;
+      "
+
+  # ----------------------------------------------------
+  # ARMSS-OTT Backend Service (Go API Server)
   # ----------------------------------------------------
   backend:
     build:
@@ -44,6 +107,16 @@ services:
       - MYSQL_USER=root
       - MYSQL_PASSWORD=${MYSQL_PASSWORD:-Vetri@123}
       - MYSQL_DB=armss_ott
+      - REDIS_ADDR=redis:6379
+      - S3_ENDPOINT=http://minio:9000
+      - S3_ACCESS_KEY=minioadmin
+      - S3_SECRET_KEY=minioadmin
+      - S3_REGION=us-east-1
+      - S3_USE_PATH_STYLE=true
+      - S3_MASTERS_BUCKET=masters
+      - S3_HLS_BUCKET=hls
+      - S3_PUBLIC_BASE_URL=http://localhost:9000
+      - ENABLE_WORKER=false
       - UPLOADS_DIR=/app/public/uploads
       - ALLOWED_ORIGINS=http://localhost:8080,http://127.0.0.1:8080,http://localhost:3000,http://localhost,http://localhost:8081
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-91550463965-0lmm9iu9h5fes5i3lh7qhme986s4va6u.apps.googleusercontent.com}
@@ -52,6 +125,46 @@ services:
       - backend_uploads:/app/public/uploads
     depends_on:
       mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    networks:
+      - armss_ott_network
+
+  # ----------------------------------------------------
+  # ARMSS-OTT Transcoding Worker Service (FFmpeg + Asynq)
+  # ----------------------------------------------------
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: armss_ott_worker
+    restart: always
+    environment:
+      - RUN_AS_WORKER_ONLY=true
+      - ENV=production
+      - MYSQL_HOST=mysql
+      - MYSQL_PORT=3306
+      - MYSQL_USER=root
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD:-Vetri@123}
+      - MYSQL_DB=armss_ott
+      - REDIS_ADDR=redis:6379
+      - S3_ENDPOINT=http://minio:9000
+      - S3_ACCESS_KEY=minioadmin
+      - S3_SECRET_KEY=minioadmin
+      - S3_REGION=us-east-1
+      - S3_USE_PATH_STYLE=true
+      - S3_MASTERS_BUCKET=masters
+      - S3_HLS_BUCKET=hls
+      - TRANSCODE_CONCURRENCY=2
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
         condition: service_healthy
     networks:
       - armss_ott_network
@@ -80,6 +193,10 @@ services:
 
 volumes:
   mysql_data:
+    driver: local
+  redis_data:
+    driver: local
+  minio_data:
     driver: local
   backend_uploads:
     driver: local

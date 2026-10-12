@@ -1429,6 +1429,19 @@ function ContentTab() {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingTitle, setEditingTitle] = useState<any | null>(null);
+  const [editingEpisodes, setEditingEpisodes] = useState<any[]>([]);
+  const [loadingEpisodes, setLoadingEpisodes] = useState(false);
+  const [editingEpisodeForm, setEditingEpisodeForm] = useState<{
+    id?: string;
+    season_number: number;
+    episode_number: number;
+    title: string;
+    runtime_min: number;
+    synopsis: string;
+    video_url: string;
+    thumbnail_url: string;
+  } | null>(null);
+  const [savingEpisode, setSavingEpisode] = useState(false);
 
   const [newTitle, setNewTitle] = useState({
     title: "",
@@ -1443,6 +1456,7 @@ function ContentTab() {
     poster: "",
     backdrop: "",
     trailer: "",
+    video_url: "",
     tone: "ember",
     original: false,
     kids: false,
@@ -1458,6 +1472,18 @@ function ContentTab() {
   };
 
   useEffect(() => { void load(); }, []);
+
+  const fetchEpisodesForTitle = async (titleId: string) => {
+    setLoadingEpisodes(true);
+    try {
+      const eps = await api.admin.getEpisodes(titleId);
+      setEditingEpisodes(eps);
+    } catch {
+      setEditingEpisodes([]);
+    } finally {
+      setLoadingEpisodes(false);
+    }
+  };
 
   const handleTierChange = async (titleId: string, tier: string) => {
     setActionLoading(titleId);
@@ -1489,12 +1515,19 @@ function ContentTab() {
       poster: t.poster || "",
       backdrop: t.backdrop || "",
       trailer: t.trailer || "",
+      video_url: t.video_url || t.videoUrl || "",
       tone: t.tone || "ember",
       original: Boolean(t.original),
       kids: Boolean(t.kids),
       genres: genresStr,
       badges: badgesStr,
     });
+    setEditingEpisodeForm(null);
+    if ((t.kind || "film") === "series") {
+      void fetchEpisodesForTitle(t.id);
+    } else {
+      setEditingEpisodes([]);
+    }
   };
 
   const handleSaveEdit = async (e: React.FormEvent) => {
@@ -1525,6 +1558,7 @@ function ContentTab() {
       poster: editingTitle.poster,
       backdrop: editingTitle.backdrop,
       trailer: editingTitle.trailer,
+      video_url: editingTitle.video_url,
       tone: editingTitle.tone,
       original: editingTitle.original,
       kids: editingTitle.kids,
@@ -1543,6 +1577,77 @@ function ContentTab() {
     setActionLoading(null);
   };
 
+  const handleSaveEpisode = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingTitle?.id || !editingEpisodeForm) return;
+    if (!editingEpisodeForm.title.trim()) {
+      toast.error("Episode title is required.");
+      return;
+    }
+    setSavingEpisode(true);
+    try {
+      if (editingEpisodeForm.id) {
+        const ok = await api.admin.updateEpisode(editingEpisodeForm.id, {
+          season_number: Number(editingEpisodeForm.season_number) || 1,
+          episode_number: Number(editingEpisodeForm.episode_number) || 1,
+          title: editingEpisodeForm.title.trim(),
+          runtime_min: Number(editingEpisodeForm.runtime_min) || 45,
+          synopsis: editingEpisodeForm.synopsis,
+          video_url: editingEpisodeForm.video_url,
+          thumbnail_url: editingEpisodeForm.thumbnail_url,
+        });
+        if (ok) {
+          toast.success("Episode updated successfully!");
+          setEditingEpisodeForm(null);
+          void fetchEpisodesForTitle(editingTitle.id);
+          void useAether.getState().fetchCatalog();
+        } else {
+          toast.error("Failed to update episode.");
+        }
+      } else {
+        const ok = await api.admin.createEpisode(editingTitle.id, {
+          season_number: Number(editingEpisodeForm.season_number) || 1,
+          episode_number: Number(editingEpisodeForm.episode_number) || 1,
+          title: editingEpisodeForm.title.trim(),
+          runtime_min: Number(editingEpisodeForm.runtime_min) || 45,
+          synopsis: editingEpisodeForm.synopsis,
+          video_url: editingEpisodeForm.video_url,
+          thumbnail_url: editingEpisodeForm.thumbnail_url,
+        });
+        if (ok) {
+          toast.success("Episode created successfully!");
+          setEditingEpisodeForm(null);
+          void fetchEpisodesForTitle(editingTitle.id);
+          void useAether.getState().fetchCatalog();
+        } else {
+          toast.error("Failed to add episode.");
+        }
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Failed to save episode.");
+    } finally {
+      setSavingEpisode(false);
+    }
+  };
+
+  const handleDeleteEpisode = async (episodeId: string, epTitle: string) => {
+    if (!confirm(`Delete episode "${epTitle}"?`)) return;
+    try {
+      const ok = await api.admin.deleteEpisode(episodeId);
+      if (ok) {
+        toast.success("Episode deleted.");
+        if (editingTitle?.id) {
+          void fetchEpisodesForTitle(editingTitle.id);
+        }
+        void useAether.getState().fetchCatalog();
+      } else {
+        toast.error("Failed to delete episode.");
+      }
+    } catch {
+      toast.error("Failed to delete episode.");
+    }
+  };
+
   const handleCreateTitle = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTitle.title.trim()) {
@@ -1559,6 +1664,7 @@ function ContentTab() {
 
     const ok = await api.admin.createTitle({
       ...newTitle,
+      video_url: newTitle.video_url,
       year: parseInt(String(newTitle.year)) || 2024,
       runtime_min: parseInt(String(newTitle.runtime_min)) || 120,
       match_percent: parseInt(String(newTitle.match_percent)) || 95,
@@ -1582,6 +1688,7 @@ function ContentTab() {
         poster: "",
         backdrop: "",
         trailer: "",
+        video_url: "",
         tone: "ember",
         original: false,
         kids: false,
@@ -1746,26 +1853,65 @@ function ContentTab() {
                   2. Video Streaming & Media Links
                 </p>
 
+                {/* Trailer / Teaser URL */}
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <label className="block text-xs font-medium text-muted">
-                      Video Stream / Playback URL (HLS .m3u8 or MP4)
+                      {editingTitle.kind === "series" ? "Series Trailer / Teaser Video URL" : "Film / Title Trailer (Teaser Preview)"}
                     </label>
                     <UploadButton
                       accept="video/*"
-                      label="Upload Video File"
+                      label="Upload Trailer Video"
                       onUploaded={(url) => setEditingTitle({ ...editingTitle, trailer: url })}
                     />
                   </div>
                   <input
                     type="text"
-                    placeholder="https://.../video.mp4 or /uploads/my-video.mp4"
+                    placeholder="https://.../trailer.mp4 or /trailers/... or /uploads/..."
                     value={editingTitle.trailer}
                     onChange={(e) => setEditingTitle({ ...editingTitle, trailer: e.target.value })}
                     className="w-full rounded-lg bg-elevated px-3 py-2 text-xs font-mono text-fg border border-border focus:outline-none focus:border-accent"
                   />
-                  <p className="text-[11px] text-muted mt-1">This URL is loaded directly by the video player when users watch this title.</p>
+                  <p className="text-[11px] text-muted mt-1">
+                    This video plays in the Hero billboard backdrop, preview trailers modal, and teaser cards.
+                  </p>
                 </div>
+
+                {/* Movie Playback URL (For Film, Documentary, Live) */}
+                {editingTitle.kind !== "series" ? (
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-xs font-medium text-muted">
+                        Full Movie Stream / Playback URL (HLS .m3u8 or MP4)
+                      </label>
+                      <UploadButton
+                        accept="video/*"
+                        label="Upload Feature Video"
+                        onUploaded={(url) => setEditingTitle({ ...editingTitle, video_url: url })}
+                      />
+                    </div>
+                    <input
+                      type="text"
+                      placeholder="https://.../master.m3u8 or /uploads/movie.mp4"
+                      value={editingTitle.video_url}
+                      onChange={(e) => setEditingTitle({ ...editingTitle, video_url: e.target.value })}
+                      className="w-full rounded-lg bg-elevated px-3 py-2 text-xs font-mono text-fg border border-border focus:outline-none focus:border-accent"
+                    />
+                    <p className="text-[11px] text-muted mt-1">
+                      This full stream URL is loaded by the video player when users click "Watch Now".
+                    </p>
+                  </div>
+                ) : (
+                  <div className="rounded-xl bg-accent/10 border border-accent/25 p-3 flex items-start gap-2.5">
+                    <Tv className="size-4 text-accent shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-xs font-semibold text-fg">Web Series Episode Architecture</p>
+                      <p className="text-[11px] text-muted mt-0.5 leading-relaxed">
+                        For series, the stream URLs are configured per episode. The Trailer above plays for previews, while individual episodes are managed below in Section 4.
+                      </p>
+                    </div>
+                  </div>
+                )}
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
@@ -1875,6 +2021,271 @@ function ContentTab() {
                   </label>
                 </div>
               </div>
+
+              {/* Section 4: Seasons & Episodes (For Series) */}
+              {editingTitle.kind === "series" && (
+                <div className="space-y-3 pt-3 border-t border-border">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wider text-accent flex items-center gap-1.5">
+                        <Tv className="size-3.5" />
+                        4. Seasons & Episodes ({editingEpisodes.length} Episodes)
+                      </p>
+                      <p className="text-[11px] text-muted mt-0.5">
+                        Manage episode titles, season numbers, runtimes, and direct playback stream URLs
+                      </p>
+                    </div>
+                    {!editingEpisodeForm && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={() => {
+                          const maxEp = editingEpisodes.reduce((max, ep) => Math.max(max, ep.episode_number || 0), 0);
+                          const currentSeason = editingEpisodes.length > 0 ? (editingEpisodes[editingEpisodes.length - 1].season_number || 1) : 1;
+                          setEditingEpisodeForm({
+                            season_number: currentSeason,
+                            episode_number: maxEp + 1,
+                            title: `Episode ${maxEp + 1}`,
+                            runtime_min: 45,
+                            synopsis: "",
+                            video_url: "",
+                            thumbnail_url: "",
+                          });
+                        }}
+                        className="flex items-center gap-1 text-xs"
+                      >
+                        <Plus className="size-3.5" />
+                        Add Episode
+                      </Button>
+                    )}
+                  </div>
+
+                  {/* Add / Edit Episode Sub-form */}
+                  {editingEpisodeForm && (
+                    <div className="rounded-xl bg-surface border border-accent/40 p-4 space-y-3 shadow-lg">
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs font-bold text-fg flex items-center gap-1.5">
+                          <Pencil className="size-3.5 text-accent" />
+                          {editingEpisodeForm.id ? "Edit Episode Details" : "Add New Episode"}
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => setEditingEpisodeForm(null)}
+                          className="text-muted hover:text-fg text-xs"
+                        >
+                          <X className="size-4" />
+                        </button>
+                      </div>
+
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                        <div>
+                          <label className="block text-[11px] font-medium text-muted mb-1">Season #</label>
+                          <input
+                            type="number"
+                            min={1}
+                            value={editingEpisodeForm.season_number}
+                            onChange={(e) => setEditingEpisodeForm({ ...editingEpisodeForm, season_number: parseInt(e.target.value) || 1 })}
+                            className="w-full rounded-lg bg-elevated px-2.5 py-1.5 text-xs text-fg border border-border focus:outline-none"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-medium text-muted mb-1">Episode #</label>
+                          <input
+                            type="number"
+                            min={1}
+                            value={editingEpisodeForm.episode_number}
+                            onChange={(e) => setEditingEpisodeForm({ ...editingEpisodeForm, episode_number: parseInt(e.target.value) || 1 })}
+                            className="w-full rounded-lg bg-elevated px-2.5 py-1.5 text-xs text-fg border border-border focus:outline-none"
+                          />
+                        </div>
+                        <div className="col-span-2">
+                          <label className="block text-[11px] font-medium text-muted mb-1">Episode Title *</label>
+                          <input
+                            type="text"
+                            placeholder="e.g. Chapter 1: The Beginning"
+                            value={editingEpisodeForm.title}
+                            onChange={(e) => setEditingEpisodeForm({ ...editingEpisodeForm, title: e.target.value })}
+                            className="w-full rounded-lg bg-elevated px-2.5 py-1.5 text-xs text-fg border border-border focus:outline-none"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div>
+                          <label className="block text-[11px] font-medium text-muted mb-1">Runtime (min)</label>
+                          <input
+                            type="number"
+                            value={editingEpisodeForm.runtime_min}
+                            onChange={(e) => setEditingEpisodeForm({ ...editingEpisodeForm, runtime_min: parseInt(e.target.value) || 45 })}
+                            className="w-full rounded-lg bg-elevated px-2.5 py-1.5 text-xs text-fg border border-border focus:outline-none"
+                          />
+                        </div>
+                        <div className="sm:col-span-2">
+                          <div className="flex items-center justify-between mb-1">
+                            <label className="block text-[11px] font-medium text-muted">Episode Stream URL (HLS / MP4)</label>
+                            <UploadButton
+                              accept="video/*"
+                              label="Upload Episode Video"
+                              onUploaded={(url) => setEditingEpisodeForm({ ...editingEpisodeForm, video_url: url })}
+                            />
+                          </div>
+                          <input
+                            type="text"
+                            placeholder="https://.../episode.mp4 or /uploads/..."
+                            value={editingEpisodeForm.video_url}
+                            onChange={(e) => setEditingEpisodeForm({ ...editingEpisodeForm, video_url: e.target.value })}
+                            className="w-full rounded-lg bg-elevated px-2.5 py-1.5 text-xs font-mono text-fg border border-border focus:outline-none"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="block text-[11px] font-medium text-muted">Episode Thumbnail Artwork (16:9)</label>
+                          <UploadButton
+                            accept="image/*"
+                            label="Upload Thumbnail"
+                            onUploaded={(url) => setEditingEpisodeForm({ ...editingEpisodeForm, thumbnail_url: url })}
+                          />
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="text"
+                            placeholder="https://.../thumb.jpg or /uploads/..."
+                            value={editingEpisodeForm.thumbnail_url}
+                            onChange={(e) => setEditingEpisodeForm({ ...editingEpisodeForm, thumbnail_url: e.target.value })}
+                            className="w-full rounded-lg bg-elevated px-2.5 py-1.5 text-xs font-mono text-fg border border-border focus:outline-none"
+                          />
+                          {editingEpisodeForm.thumbnail_url && (
+                            <img
+                              src={editingEpisodeForm.thumbnail_url}
+                              alt="Thumb"
+                              className="w-10 h-7 rounded object-cover border border-border shrink-0 bg-black/40"
+                            />
+                          )}
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-medium text-muted mb-1">Episode Synopsis</label>
+                        <textarea
+                          rows={2}
+                          placeholder="Brief recap or summary of this episode..."
+                          value={editingEpisodeForm.synopsis}
+                          onChange={(e) => setEditingEpisodeForm({ ...editingEpisodeForm, synopsis: e.target.value })}
+                          className="w-full rounded-lg bg-elevated px-2.5 py-1.5 text-xs text-fg border border-border focus:outline-none resize-none"
+                        />
+                      </div>
+
+                      <div className="flex justify-end gap-2 pt-2">
+                        <Button
+                          type="button"
+                          variant="line"
+                          size="sm"
+                          onClick={() => setEditingEpisodeForm(null)}
+                        >
+                          Cancel
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          disabled={savingEpisode}
+                          onClick={handleSaveEpisode}
+                        >
+                          {savingEpisode ? "Saving..." : editingEpisodeForm.id ? "Update Episode" : "Save Episode"}
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Episodes List */}
+                  {loadingEpisodes ? (
+                    <div className="py-6 text-center text-xs text-muted">
+                      <RefreshCw className="size-4 animate-spin inline-block mr-2" />
+                      Loading episodes...
+                    </div>
+                  ) : editingEpisodes.length === 0 ? (
+                    <div className="rounded-xl bg-elevated/40 border border-border/60 p-5 text-center">
+                      <Tv className="size-6 text-muted mx-auto mb-1.5" />
+                      <p className="text-xs font-medium text-fg">No episodes added yet</p>
+                      <p className="text-[11px] text-muted mt-0.5">Click "Add Episode" above to upload your first episode stream.</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                      {editingEpisodes.map((ep) => (
+                        <div
+                          key={ep.id}
+                          className="flex items-center justify-between gap-3 p-2.5 rounded-lg bg-elevated/70 border border-border hover:border-border/80 transition-all text-xs"
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            {ep.thumbnail_url ? (
+                              <img
+                                src={ep.thumbnail_url}
+                                alt={ep.title}
+                                className="w-12 h-7 rounded object-cover border border-border shrink-0 bg-black/40"
+                              />
+                            ) : (
+                              <span className="shrink-0 font-mono font-bold text-[11px] bg-accent/15 text-accent px-2 py-0.5 rounded">
+                                S{ep.season_number} E{ep.episode_number}
+                              </span>
+                            )}
+                            <div className="min-w-0">
+                              <p className="font-medium text-fg truncate">
+                                {ep.thumbnail_url && (
+                                  <span className="font-mono text-accent mr-1.5 font-bold">
+                                    S{ep.season_number} E{ep.episode_number}
+                                  </span>
+                                )}
+                                {ep.title}
+                              </p>
+                              <div className="flex items-center gap-2 text-[10px] text-muted">
+                                <span>{ep.runtime_min} mins</span>
+                                <span>•</span>
+                                {ep.video_url ? (
+                                  <span className="text-emerald-400 flex items-center gap-1 font-mono">
+                                    <Check className="size-3" /> Stream Ready
+                                  </span>
+                                ) : (
+                                  <span className="text-amber-400 font-mono">No Video URL</span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="shrink-0 flex items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditingEpisodeForm({
+                                  id: ep.id,
+                                  season_number: ep.season_number,
+                                  episode_number: ep.episode_number,
+                                  title: ep.title,
+                                  runtime_min: ep.runtime_min,
+                                  synopsis: ep.synopsis || "",
+                                  video_url: ep.video_url || "",
+                                  thumbnail_url: ep.thumbnail_url || "",
+                                });
+                              }}
+                              className="p-1 rounded text-muted hover:text-accent hover:bg-surface transition-colors"
+                              title="Edit episode"
+                            >
+                              <Pencil className="size-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteEpisode(ep.id, ep.title)}
+                              className="p-1 rounded text-muted hover:text-rose-400 hover:bg-surface transition-colors"
+                              title="Delete episode"
+                            >
+                              <Trash2 className="size-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div className="flex justify-end gap-2 pt-3 border-t border-border">
                 <Button type="button" variant="line" onClick={() => setEditingTitle(null)}>
@@ -1992,26 +2403,65 @@ function ContentTab() {
                   2. Video Streaming & Media Links
                 </p>
 
+                {/* Trailer / Teaser URL */}
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <label className="block text-xs font-medium text-muted">
-                      Video Stream / Playback URL (HLS .m3u8 or MP4)
+                      {newTitle.kind === "series" ? "Series Trailer / Teaser Video URL" : "Film / Title Trailer (Teaser Preview)"}
                     </label>
                     <UploadButton
                       accept="video/*"
-                      label="Upload Video File"
+                      label="Upload Trailer Video"
                       onUploaded={(url) => setNewTitle({ ...newTitle, trailer: url })}
                     />
                   </div>
                   <input
                     type="text"
-                    placeholder="https://.../video.mp4 or /uploads/..."
+                    placeholder="https://.../trailer.mp4 or /trailers/... or /uploads/..."
                     value={newTitle.trailer}
                     onChange={(e) => setNewTitle({ ...newTitle, trailer: e.target.value })}
                     className="w-full rounded-lg bg-elevated px-3 py-2 text-xs font-mono text-fg border border-border focus:outline-none focus:border-accent"
                   />
-                  <p className="text-[11px] text-muted mt-1">This stream URL plays when users click Watch.</p>
+                  <p className="text-[11px] text-muted mt-1">
+                    Plays in the hero billboard preview and trailer teaser modal.
+                  </p>
                 </div>
+
+                {/* Movie Playback URL (For non-series) */}
+                {newTitle.kind !== "series" ? (
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-xs font-medium text-muted">
+                        Full Movie Stream / Playback URL (HLS .m3u8 or MP4)
+                      </label>
+                      <UploadButton
+                        accept="video/*"
+                        label="Upload Feature Video"
+                        onUploaded={(url) => setNewTitle({ ...newTitle, video_url: url })}
+                      />
+                    </div>
+                    <input
+                      type="text"
+                      placeholder="https://.../master.m3u8 or /uploads/movie.mp4"
+                      value={newTitle.video_url}
+                      onChange={(e) => setNewTitle({ ...newTitle, video_url: e.target.value })}
+                      className="w-full rounded-lg bg-elevated px-3 py-2 text-xs font-mono text-fg border border-border focus:outline-none focus:border-accent"
+                    />
+                    <p className="text-[11px] text-muted mt-1">
+                      This full stream URL plays when users click "Watch Now".
+                    </p>
+                  </div>
+                ) : (
+                  <div className="rounded-xl bg-accent/10 border border-accent/25 p-3 flex items-start gap-2.5">
+                    <Tv className="size-4 text-accent shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-xs font-semibold text-fg">Web Series Architecture</p>
+                      <p className="text-[11px] text-muted mt-0.5 leading-relaxed">
+                        For series, upload the teaser trailer above. After creating the series, you can open it in the catalog to add and manage its seasons and individual episodes.
+                      </p>
+                    </div>
+                  </div>
+                )}
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>

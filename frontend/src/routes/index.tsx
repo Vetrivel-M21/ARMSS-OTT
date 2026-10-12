@@ -18,7 +18,8 @@ function Home() {
   const catalogVersion = useAether((s) => s.catalogVersion);
   const displaySettings = useAether((s) => s.displaySettings);
 
-  const { hero, rows } = homeRows(profile, continueWatching, myList);
+  const navVis = displaySettings?.navVisibility;
+  const { hero, rows } = homeRows(profile, continueWatching, myList, navVis);
   const progressById = Object.fromEntries(
     continueWatching.map((c) => [c.id, c.progress]),
   );
@@ -30,9 +31,17 @@ function Home() {
     homeLayout?.heroTitleId && homeLayout.heroTitleId !== "auto"
       ? getTitle(homeLayout.heroTitleId)
       : null;
-  const finalHero = specificHero
-    ? [specificHero, ...hero.filter((h) => h.id !== specificHero.id)]
-    : hero;
+
+  const isSpecificHeroAllowed =
+    !specificHero ||
+    ((navVis?.films !== false || specificHero.kind !== "film") &&
+      (navVis?.series !== false || specificHero.kind !== "series") &&
+      (navVis?.live !== false || specificHero.kind !== "live"));
+
+  const finalHero =
+    specificHero && isSpecificHeroAllowed
+      ? [specificHero, ...hero.filter((h) => h.id !== specificHero.id)]
+      : hero;
 
   // Row Ordering & Visibility alignment (if configured by admin)
   let finalRows: RowDef[] = rows;

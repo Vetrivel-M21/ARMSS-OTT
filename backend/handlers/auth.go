@@ -123,6 +123,191 @@ func Register(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+type RegisterSendOTPRequest struct {
+	Email    string `json:"email"`
+	Name     string `json:"name"`
+	Password string `json:"password"`
+}
+
+type RegisterVerifyOTPRequest struct {
+	Email    string `json:"email"`
+	Otp      string `json:"otp"`
+	Name     string `json:"name"`
+	Password string `json:"password"`
+}
+
+// RegisterSendOTP validates registration data and dispatches a 6-digit verification code via Bird API / SMTP
+func RegisterSendOTP(w http.ResponseWriter, r *http.Request) {
+	var req RegisterSendOTPRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, `{"error":"invalid request body"}`, http.StatusBadRequest)
+		return
+	}
+
+	cleanEmail := strings.TrimSpace(strings.ToLower(req.Email))
+	cleanName := strings.TrimSpace(req.Name)
+	cleanPassword := strings.TrimSpace(req.Password)
+
+	if cleanEmail == "" || !strings.Contains(cleanEmail, "@") || !strings.Contains(cleanEmail, ".") {
+		http.Error(w, `{"error":"a valid email address is required"}`, http.StatusBadRequest)
+		return
+	}
+	if len(cleanPassword) < 6 {
+		http.Error(w, `{"error":"password must be at least 6 characters"}`, http.StatusBadRequest)
+		return
+	}
+	if cleanName == "" {
+		cleanName = strings.Split(cleanEmail, "@")[0]
+	}
+
+	// Check if already registered by email OR name
+	var existing string
+	err := database.DB.QueryRow("SELECT id FROM users WHERE LOWER(email) = ? OR LOWER(name) = ?", cleanEmail, strings.ToLower(cleanName)).Scan(&existing)
+	if err == nil {
+		http.Error(w, `{"error":"an account with this email address or name already exists"}`, http.StatusConflict)
+		return
+	}
+
+	// Generate cryptographically secure 6-digit OTP
+	otpNum, err := cryptoRandInt(100000, 999999)
+	if err != nil {
+		http.Error(w, `{"error":"failed generating verification code"}`, http.StatusInternalServerError)
+		return
+	}
+	otpCode := fmt.Sprintf("%06d", otpNum)
+	expiresAt := time.Now().Add(15 * time.Minute)
+
+	// Invalidate previous unverified registration OTPs for this email
+	_, _ = database.DB.Exec("UPDATE user_otps SET verified = 1 WHERE LOWER(email) = ? AND purpose = 'registration'", cleanEmail)
+
+	// Insert new OTP record
+	otpID := uuid.New().String()
+	_, err = database.DB.Exec(
+		"INSERT INTO user_otps (id, user_id, email, otp_code, purpose, expires_at, verified, created_at) VALUES (?, 'pending', ?, ?, 'registration', ?, 0, ?)",
+		otpID, cleanEmail, otpCode, expiresAt, time.Now(),
+	)
+	if err != nil {
+		http.Error(w, `{"error":"failed creating OTP record"}`, http.StatusInternalServerError)
+		return
+	}
+
+	// Dispatch email via Bird API / SMTP
+	_ = mail.SendRegistrationOTP(cleanEmail, cleanName, otpCode)
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": "A 6-digit verification code has been dispatched to " + cleanEmail,
+	})
+}
+
+// RegisterVerifyOTP verifies the registration code, commits the user to database, and issues JWT token
+func RegisterVerifyOTP(w http.ResponseWriter, r *http.Request) {
+	var req RegisterVerifyOTPRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, `{"error":"invalid request body"}`, http.StatusBadRequest)
+		return
+	}
+
+	cleanEmail := strings.TrimSpace(strings.ToLower(req.Email))
+	cleanOtp := strings.TrimSpace(req.Otp)
+	cleanName := strings.TrimSpace(req.Name)
+	cleanPassword := strings.TrimSpace(req.Password)
+
+	if cleanEmail == "" || cleanOtp == "" || len(cleanPassword) < 6 {
+		http.Error(w, `{"error":"email, 6-digit code, and valid password are required"}`, http.StatusBadRequest)
+		return
+	}
+	if cleanName == "" {
+		cleanName = strings.Split(cleanEmail, "@")[0]
+	}
+
+	// Verify matching active registration OTP
+	var otpID string
+	err := database.DB.QueryRow(
+		"SELECT id FROM user_otps WHERE LOWER(email) = ? AND purpose = 'registration' AND otp_code = ? AND verified = 0 AND expires_at > ?",
+		cleanEmail, cleanOtp, time.Now(),
+	).Scan(&otpID)
+	if err != nil {
+		http.Error(w, `{"error":"invalid or expired verification code"}`, http.StatusBadRequest)
+		return
+	}
+
+	// Mark OTP as verified
+	_, _ = database.DB.Exec("UPDATE user_otps SET verified = 1 WHERE id = ?", otpID)
+
+	// Concurrency check: make sure email wasn't taken in the interim
+	var existing string
+	err = database.DB.QueryRow("SELECT id FROM users WHERE LOWER(email) = ? OR LOWER(name) = ?", cleanEmail, strings.ToLower(cleanName)).Scan(&existing)
+	if err == nil {
+		http.Error(w, `{"error":"an account with this email address or name already exists"}`, http.StatusConflict)
+		return
+	}
+
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(cleanPassword), bcrypt.DefaultCost)
+	if err != nil {
+		http.Error(w, `{"error":"failed hashing password"}`, http.StatusInternalServerError)
+		return
+	}
+
+	userID := uuid.New().String()
+	now := time.Now()
+
+	user := models.User{
+		ID:               userID,
+		Email:            cleanEmail,
+		Name:             cleanName,
+		SubscriptionTier: models.TierFree,
+		CreatedAt:        now,
+		UpdatedAt:        now,
+		LastLoginAt:      &now,
+		LastActiveAt:     &now,
+	}
+
+	_, err = database.DB.Exec(
+		"INSERT INTO users (id, email, password_hash, name, subscription_tier, is_admin, last_login_at, last_active_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+		user.ID, user.Email, string(hashedPassword), user.Name, string(user.SubscriptionTier), false, now, now, now, now,
+	)
+	if err != nil {
+		http.Error(w, `{"error":"failed creating user record"}`, http.StatusInternalServerError)
+		return
+	}
+
+	// Create default adult profile and kids profile
+	profileAdult := models.Profile{
+		ID:          uuid.New().String(),
+		UserID:      userID,
+		Name:        user.Name,
+		AvatarColor: "marble",
+		IsKids:      false,
+		CreatedAt:   now,
+	}
+	profileKids := models.Profile{
+		ID:          uuid.New().String(),
+		UserID:      userID,
+		Name:        "Kids",
+		AvatarColor: "moss",
+		IsKids:      true,
+		Pin:         "1234",
+		CreatedAt:   now,
+	}
+
+	_, _ = database.DB.Exec("INSERT INTO profiles (id, user_id, name, avatar_color, is_kids, pin, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)", profileAdult.ID, userID, profileAdult.Name, profileAdult.AvatarColor, profileAdult.IsKids, profileAdult.Pin, now)
+	_, _ = database.DB.Exec("INSERT INTO profiles (id, user_id, name, avatar_color, is_kids, pin, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)", profileKids.ID, userID, profileKids.Name, profileKids.AvatarColor, profileKids.IsKids, profileKids.Pin, now)
+
+	_, _ = database.DB.Exec("INSERT INTO user_activity_logs (id, user_id, action, details, created_at) VALUES (?, ?, 'register', 'Account registered with email OTP verification', ?)", uuid.New().String(), userID, now)
+
+	token, _ := middleware.GenerateToken(&user)
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	_ = json.NewEncoder(w).Encode(AuthResponse{
+		Token:    token,
+		User:     user,
+		Profiles: []models.Profile{profileAdult, profileKids},
+	})
+}
+
 func Login(w http.ResponseWriter, r *http.Request) {
 	var req LoginRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -265,9 +450,15 @@ func verifyGoogleToken(token string) (*googleUserInfo, error) {
 					Aud           string `json:"aud"`
 				}
 				if err := json.NewDecoder(resp.Body).Decode(&idTokenInfo); err == nil && idTokenInfo.Email != "" {
-					expectedAud := os.Getenv("GOOGLE_CLIENT_ID")
-					if expectedAud != "" && idTokenInfo.Aud != "" && idTokenInfo.Aud != expectedAud {
-						return nil, fmt.Errorf("Google token audience mismatch")
+					webAud := os.Getenv("GOOGLE_CLIENT_ID")
+					androidAud := os.Getenv("GOOGLE_ANDROID_CLIENT_ID")
+					if idTokenInfo.Aud != "" {
+						valid := (webAud == "" && androidAud == "") ||
+							(webAud != "" && idTokenInfo.Aud == webAud) ||
+							(androidAud != "" && idTokenInfo.Aud == androidAud)
+						if !valid {
+							return nil, fmt.Errorf("Google token audience mismatch")
+						}
 					}
 					return &googleUserInfo{
 						Email:         idTokenInfo.Email,

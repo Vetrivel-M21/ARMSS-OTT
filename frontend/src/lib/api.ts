@@ -43,6 +43,7 @@ export interface PlaybackTicketResponse {
   error?: string;
   required_tier?: SubscriptionTier;
   message?: string;
+  manifest_url?: string;
 }
 
 export interface AnalyticsOverview {
@@ -177,10 +178,17 @@ export type SiteDisplaySettings = {
   homeLayout: HomeLayoutSettings;
 };
 
-const API_BASE =
-  (typeof import.meta !== "undefined" && import.meta.env?.VITE_API_BASE_URL)
-    ? import.meta.env.VITE_API_BASE_URL
-    : "http://127.0.0.1:8081/api";
+function getApiBase(): string {
+  if (typeof import.meta !== "undefined" && import.meta.env?.VITE_API_BASE_URL) {
+    return import.meta.env.VITE_API_BASE_URL;
+  }
+  if (typeof window !== "undefined") {
+    return "/api";
+  }
+  return "http://127.0.0.1:8081/api";
+}
+
+const API_BASE = getApiBase();
 
 export function getToken(): string | null {
   if (typeof window === "undefined") return null;
@@ -359,14 +367,89 @@ export const api = {
         method: "POST",
       });
       const data = await res.json().catch(() => ({}));
+      if (res.status === 403 && data.error === "tier_upgrade_required") {
+        return {
+          allowed: false,
+          error: "tier_upgrade_required",
+          message: data.message || "Upgrade your subscription to watch this exclusive title in full quality.",
+          required_tier: data.required_tier,
+        };
+      }
       return {
-        allowed: res.ok && data.allowed !== false && data.error !== "tier_upgrade_required",
+        allowed: true,
         ...data,
       };
     } catch {
       // Fallback allowed for offline demo mode
       return { allowed: true, max_resolution: "1080p", ad_free: true };
     }
+  },
+
+  // Playback Stream Ticket (/videos/:id/playback)
+  async getPlayback(
+    videoId: string,
+    clientType = "web",
+    deviceId?: string,
+  ): Promise<{
+    manifestUrl: string;
+    maxHeight: number;
+    resumePositionSec: number;
+  }> {
+    const headers: Record<string, string> = {
+      "X-Client-Type": clientType,
+    };
+    if (deviceId) {
+      headers["X-Device-ID"] = deviceId;
+    }
+    const res = await fetchWithAuth(`/videos/${videoId}/playback`, { headers });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || err.message || `Playback request failed (${res.status})`);
+    }
+    return await res.json();
+  },
+
+  // Save Watch Progress (/videos/:id/progress)
+  async saveWatchProgress(
+    videoId: string,
+    timeSeconds: number,
+    progressPercent: number,
+    profileId?: string,
+    deviceId?: string,
+  ): Promise<void> {
+    try {
+      await fetchWithAuth(`/videos/${videoId}/progress`, {
+        method: "POST",
+        body: JSON.stringify({
+          time_seconds: timeSeconds,
+          progress_percent: progressPercent,
+          profile_id: profileId,
+          device_id: deviceId,
+        }),
+      });
+    } catch {
+      // Non-blocking sync
+    }
+  },
+
+  // Stream Concurrency Heartbeat (/videos/:id/heartbeat)
+  async sendStreamHeartbeat(
+    videoId: string,
+    sessionId?: string,
+    deviceId?: string,
+  ): Promise<{ session_id?: string }> {
+    try {
+      const res = await fetchWithAuth(`/videos/${videoId}/heartbeat`, {
+        method: "POST",
+        body: JSON.stringify({ session_id: sessionId, device_id: deviceId }),
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch {
+      // Non-blocking heartbeat
+    }
+    return {};
   },
 
   // Public Platform Broadcast Notification
@@ -482,6 +565,28 @@ export const api = {
     }
   },
 
+  // Public Title & Episodes (GET)
+  async getTitle(id: string): Promise<any | null> {
+    try {
+      const res = await fetch(`${API_BASE}/titles/${id}`);
+      if (!res.ok) return null;
+      return await res.json();
+    } catch {
+      return null;
+    }
+  },
+
+  async getEpisodes(titleId: string): Promise<any[]> {
+    try {
+      const res = await fetch(`${API_BASE}/titles/${titleId}/episodes`);
+      if (!res.ok) return [];
+      const data = await res.json();
+      return data.episodes || [];
+    } catch {
+      return [];
+    }
+  },
+
   // Admin API
   admin: {
     async getUserDetails(userId: string): Promise<UserDetailResponse | null> {
@@ -579,6 +684,52 @@ export const api = {
     async deleteTitle(titleId: string): Promise<boolean> {
       try {
         const res = await fetchWithAuth(`/admin/titles/${titleId}`, {
+          method: "DELETE",
+        });
+        return res.ok;
+      } catch {
+        return false;
+      }
+    },
+
+    async getEpisodes(titleId: string): Promise<any[]> {
+      try {
+        const res = await fetchWithAuth(`/admin/titles/${titleId}/episodes`);
+        if (!res.ok) return [];
+        const data = await res.json();
+        return data.episodes || [];
+      } catch {
+        return [];
+      }
+    },
+
+    async createEpisode(titleId: string, data: any): Promise<boolean> {
+      try {
+        const res = await fetchWithAuth(`/admin/titles/${titleId}/episodes`, {
+          method: "POST",
+          body: JSON.stringify(data),
+        });
+        return res.ok;
+      } catch {
+        return false;
+      }
+    },
+
+    async updateEpisode(episodeId: string, data: any): Promise<boolean> {
+      try {
+        const res = await fetchWithAuth(`/admin/episodes/${episodeId}`, {
+          method: "PUT",
+          body: JSON.stringify(data),
+        });
+        return res.ok;
+      } catch {
+        return false;
+      }
+    },
+
+    async deleteEpisode(episodeId: string): Promise<boolean> {
+      try {
+        const res = await fetchWithAuth(`/admin/episodes/${episodeId}`, {
           method: "DELETE",
         });
         return res.ok;

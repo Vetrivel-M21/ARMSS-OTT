@@ -29,6 +29,7 @@ build/
 *.so
 *.dylib
 backend/armss-ott-backend.exe
+backend/bin/
 
 # OS & Editor
 .DS_Store

@@ -150,14 +150,9 @@ const seedContinue: ContinueItem[] = [
     updatedAt: Date.now() - 1000 * 60 * 50,
   },
   {
-    id: "soorarai-pottru",
-    progress: 0.61,
+    id: "master",
+    progress: 0.65,
     updatedAt: Date.now() - 1000 * 60 * 60 * 18,
-  },
-  {
-    id: "96",
-    progress: 0.22,
-    updatedAt: Date.now() - 1000 * 60 * 180,
   },
 ];
 
@@ -170,22 +165,15 @@ export const useAether = create<AetherState>()(
       upgradeTargetTitle: null,
       activeProfile: null,
       myList: {
-        arjun: ["vikram", "ponniyin-selvan-1", "jai-bhim"],
-        kids: ["chutti-chutties", "naattu-kili"],
+        arjun: ["vikram", "master"],
+        kids: [],
       },
       continueWatching: {
         arjun: seedContinue,
-        kids: [
-          {
-            id: "chutti-chutties",
-            episodeId: "chutti-s1e2",
-            progress: 0.35,
-            updatedAt: Date.now() - 1000 * 60 * 40,
-          },
-        ],
+        kids: [],
       },
       downloads: { arjun: [], kids: [] },
-      reminders: ["thalaivar-169"],
+      reminders: [],
       searchHistory: [],
       ratings: {},
       heroMuted: true,

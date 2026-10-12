@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import {
   Bell,
@@ -11,6 +11,7 @@ import {
   Share2,
   ThumbsDown,
   ThumbsUp,
+  Tv,
   X,
 } from "lucide-react";
 import * as Dialog from "@radix-ui/react-dialog";
@@ -123,10 +124,52 @@ function TitlePage() {
   const addDownload = useAether((s) => s.addDownload);
   const removeDownload = useAether((s) => s.removeDownload);
 
+  const isSeries = title?.kind === "series";
+  const [dynamicEpisodes, setDynamicEpisodes] = useState<Episode[]>(title?.episodes || []);
+  const [loadingEpisodes, setLoadingEpisodes] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    if (title && (title.kind === "series" || !title.episodes?.length)) {
+      setLoadingEpisodes(true);
+      void api.getEpisodes(id).then((eps) => {
+        if (!active) return;
+        if (Array.isArray(eps) && eps.length > 0) {
+          setDynamicEpisodes(
+            eps.map((e: any) => ({
+              id: e.id,
+              season: e.season_number || e.season || 1,
+              number: e.episode_number || e.number || 1,
+              title: e.title,
+              runtime: e.runtime_min || e.runtime || 45,
+              synopsis: e.synopsis || "",
+              video_url: e.video_url || e.videoUrl || "",
+              thumbnail_url: e.thumbnail_url || "",
+            })),
+          );
+        }
+        setLoadingEpisodes(false);
+      });
+    }
+    return () => {
+      active = false;
+    };
+  }, [id, title?.kind, catalogVersion]);
+
+  const effectiveEpisodes = dynamicEpisodes.length > 0 ? dynamicEpisodes : (title?.episodes || []);
+  const hasEpisodesTab = isSeries || effectiveEpisodes.length > 0;
+
   const [tab, setTab] = useState<"episodes" | "related" | "details">(
-    title?.episodes?.length ? "episodes" : "related",
+    hasEpisodesTab ? "episodes" : "related",
   );
   const [trailerOpen, setTrailerOpen] = useState(false);
+
+  // Sync tab if title changes to series
+  useEffect(() => {
+    if (hasEpisodesTab) {
+      setTab("episodes");
+    }
+  }, [hasEpisodesTab]);
 
   if (!title) {
     return (
@@ -247,10 +290,15 @@ function TitlePage() {
                   if (!user) {
                     void navigate({ to: "/login", search: { redirect: `/watch/${title.id}` } as any });
                   } else {
+                    const epParam = saved?.episodeId
+                      ? { e: saved.episodeId }
+                      : effectiveEpisodes.length > 0
+                        ? { e: effectiveEpisodes[0].id }
+                        : undefined;
                     void navigate({
                       to: "/watch/$id",
                       params: { id: title.id },
-                      search: saved?.episodeId ? { e: saved.episodeId } : undefined,
+                      search: epParam as any,
                     });
                   }
                 }}
@@ -349,7 +397,7 @@ function TitlePage() {
       {/* Tabs */}
       <div className="mx-auto max-w-5xl px-4 py-8 sm:px-8">
         <div className="flex gap-5 border-b border-border text-sm">
-          {(title.episodes?.length
+          {(hasEpisodesTab
             ? (["episodes", "related", "details"] as const)
             : (["related", "details"] as const)
           ).map((t) => (
@@ -358,23 +406,39 @@ function TitlePage() {
               type="button"
               onClick={() => setTab(t)}
               className={cn(
-                "border-b-2 pb-3 capitalize",
+                "border-b-2 pb-3 capitalize transition-colors font-medium",
                 tab === t
-                  ? "border-fg text-fg"
+                  ? "border-accent text-accent font-semibold"
                   : "border-transparent text-muted hover:text-fg",
               )}
             >
-              {t}
+              {t === "episodes" && effectiveEpisodes.length > 0
+                ? `Episodes (${effectiveEpisodes.length})`
+                : t}
             </button>
           ))}
         </div>
 
-        {tab === "episodes" && title.episodes ? (
-          <EpisodeList
-            titleId={title.id}
-            episodes={title.episodes}
-            activeId={saved?.episodeId}
-          />
+        {tab === "episodes" && hasEpisodesTab ? (
+          effectiveEpisodes.length > 0 ? (
+            <EpisodeList
+              titleId={title.id}
+              episodes={effectiveEpisodes}
+              activeId={saved?.episodeId}
+            />
+          ) : loadingEpisodes ? (
+            <div className="py-12 text-center text-sm text-muted">
+              Loading series episodes...
+            </div>
+          ) : (
+            <div className="mt-8 rounded-2xl bg-surface/50 border border-border p-8 text-center max-w-lg mx-auto">
+              <Tv className="size-8 text-accent/60 mx-auto mb-3" />
+              <h3 className="text-base font-semibold text-fg">No Episodes Added Yet</h3>
+              <p className="mt-1.5 text-xs text-muted leading-relaxed">
+                Episodes for this web series are currently being prepared. Check back shortly or add episodes in the Admin dashboard.
+              </p>
+            </div>
+          )
         ) : null}
 
         {tab === "related" ? (
@@ -496,16 +560,28 @@ function EpisodeList({
                 )}
               >
                 <div className="flex items-center gap-3.5 min-w-0">
-                  <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-white/5 border border-white/10 text-xs font-bold text-fg group-hover:bg-accent group-hover:text-accent-fg transition-colors">
+                  <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-white/5 border border-white/10 text-xs font-bold text-muted group-hover:bg-accent group-hover:text-accent-fg transition-colors">
                     {ep.number}
                   </span>
+                  {ep.thumbnail_url ? (
+                    <div className="relative w-24 sm:w-28 h-14 sm:h-16 shrink-0 rounded-lg overflow-hidden border border-white/10 bg-black/40 group-hover:border-accent/40 transition-colors">
+                      <img
+                        src={ep.thumbnail_url}
+                        alt={ep.title}
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                      />
+                      <div className="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                        <Play className="size-4 fill-white text-white drop-shadow" />
+                      </div>
+                    </div>
+                  ) : null}
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
                       <h3 className="text-sm font-semibold text-fg truncate group-hover:text-accent transition-colors">
                         {ep.title}
                       </h3>
                       {isActive && (
-                        <span className="rounded-full bg-accent/20 px-2 py-0.2 text-[10px] font-bold text-accent uppercase">
+                        <span className="rounded-full bg-accent/20 px-2 py-0.5 text-[10px] font-bold text-accent uppercase">
                           Watching
                         </span>
                       )}

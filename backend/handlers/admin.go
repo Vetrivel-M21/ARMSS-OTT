@@ -221,6 +221,7 @@ func AdminUpdateTitle(w http.ResponseWriter, r *http.Request) {
 		Poster       *string                  `json:"poster"`
 		Backdrop     *string                  `json:"backdrop"`
 		Trailer      *string                  `json:"trailer"`
+		VideoURL     *string                  `json:"video_url"`
 		Tone         *string                  `json:"tone"`
 		Original     *bool                    `json:"original"`
 		Kids         *bool                    `json:"kids"`
@@ -280,6 +281,10 @@ func AdminUpdateTitle(w http.ResponseWriter, r *http.Request) {
 	if req.Trailer != nil {
 		setClauses = append(setClauses, "trailer = ?")
 		args = append(args, *req.Trailer)
+	}
+	if req.VideoURL != nil {
+		setClauses = append(setClauses, "video_url = ?")
+		args = append(args, *req.VideoURL)
 	}
 	if req.Tone != nil {
 		setClauses = append(setClauses, "tone = ?")
@@ -394,18 +399,160 @@ func AdminCreateTitle(w http.ResponseWriter, r *http.Request) {
 	badgesStr := strings.Join(t.Badges, ",")
 
 	_, err := database.DB.Exec(
-		`INSERT INTO titles (id, title, kind, year, maturity, runtime_min, match_percent, logline, synopsis, poster, backdrop, trailer, tone, original, kids, required_tier, genres, badges)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		t.ID, t.Title, t.Kind, t.Year, t.Maturity, t.RuntimeMin, t.Match, t.Logline, t.Synopsis, t.Poster, t.Backdrop, t.Trailer, t.Tone, t.Original, t.Kids, string(t.RequiredTier), genresStr, badgesStr,
+		`INSERT INTO titles (id, title, kind, year, maturity, runtime_min, match_percent, logline, synopsis, poster, backdrop, trailer, video_url, tone, original, kids, required_tier, genres, badges)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		t.ID, t.Title, t.Kind, t.Year, t.Maturity, t.RuntimeMin, t.Match, t.Logline, t.Synopsis, t.Poster, t.Backdrop, t.Trailer, t.VideoURL, t.Tone, t.Original, t.Kids, string(t.RequiredTier), genresStr, badgesStr,
 	)
 	if err != nil {
-		log.Printf("[AdminCreateTitle] Failed inserting title %q (ID: %s): %v", t.Title, t.ID, err)
-		http.Error(w, `{"error":"failed creating title: `+err.Error()+`"}`, http.StatusInternalServerError)
-		return
+		// Fallback without video_url if table column missing
+		_, err = database.DB.Exec(
+			`INSERT INTO titles (id, title, kind, year, maturity, runtime_min, match_percent, logline, synopsis, poster, backdrop, trailer, tone, original, kids, required_tier, genres, badges)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			t.ID, t.Title, t.Kind, t.Year, t.Maturity, t.RuntimeMin, t.Match, t.Logline, t.Synopsis, t.Poster, t.Backdrop, t.Trailer, t.Tone, t.Original, t.Kids, string(t.RequiredTier), genresStr, badgesStr,
+		)
+		if err != nil {
+			log.Printf("[AdminCreateTitle] Failed inserting title %q (ID: %s): %v", t.Title, t.ID, err)
+			http.Error(w, `{"error":"failed creating title: `+err.Error()+`"}`, http.StatusInternalServerError)
+			return
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "title": t})
+}
+
+// AdminListEpisodes — GET /api/admin/titles/{id}/episodes
+func AdminListEpisodes(w http.ResponseWriter, r *http.Request) {
+	titleID := chi.URLParam(r, "id")
+	episodes := []models.Episode{}
+	rows, err := database.DB.Query(
+		"SELECT id, title_id, season_number, episode_number, title, runtime_min, synopsis, video_url, thumbnail_url, created_at FROM episodes WHERE title_id = ? ORDER BY season_number ASC, episode_number ASC",
+		titleID,
+	)
+	if err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var ep models.Episode
+			var thumb sql.NullString
+			if err := rows.Scan(&ep.ID, &ep.TitleID, &ep.SeasonNumber, &ep.EpisodeNumber, &ep.Title, &ep.RuntimeMin, &ep.Synopsis, &ep.VideoURL, &thumb, &ep.CreatedAt); err == nil {
+				if thumb.Valid {
+					ep.ThumbnailURL = thumb.String
+				}
+				episodes = append(episodes, ep)
+			}
+		}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{"episodes": episodes})
+}
+
+// AdminCreateEpisode — POST /api/admin/titles/{id}/episodes
+func AdminCreateEpisode(w http.ResponseWriter, r *http.Request) {
+	titleID := chi.URLParam(r, "id")
+	var ep models.Episode
+	if err := json.NewDecoder(r.Body).Decode(&ep); err != nil {
+		http.Error(w, `{"error":"invalid request body: `+err.Error()+`"}`, http.StatusBadRequest)
+		return
+	}
+	if strings.TrimSpace(ep.Title) == "" {
+		http.Error(w, `{"error":"episode title is required"}`, http.StatusBadRequest)
+		return
+	}
+	if ep.ID == "" {
+		ep.ID = fmt.Sprintf("%s-s%de%d-%s", titleID, ep.SeasonNumber, ep.EpisodeNumber, uuid.New().String()[:6])
+	}
+	if ep.SeasonNumber <= 0 {
+		ep.SeasonNumber = 1
+	}
+	if ep.EpisodeNumber <= 0 {
+		ep.EpisodeNumber = 1
+	}
+	ep.TitleID = titleID
+	ep.CreatedAt = time.Now()
+
+	_, err := database.DB.Exec(
+		`INSERT INTO episodes (id, title_id, season_number, episode_number, title, runtime_min, synopsis, video_url, thumbnail_url, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		ep.ID, ep.TitleID, ep.SeasonNumber, ep.EpisodeNumber, ep.Title, ep.RuntimeMin, ep.Synopsis, ep.VideoURL, ep.ThumbnailURL, ep.CreatedAt,
+	)
+	if err != nil {
+		http.Error(w, `{"error":"failed creating episode: `+err.Error()+`"}`, http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "episode": ep})
+}
+
+// AdminUpdateEpisode — PUT /api/admin/episodes/{episodeId}
+func AdminUpdateEpisode(w http.ResponseWriter, r *http.Request) {
+	episodeID := chi.URLParam(r, "episodeId")
+	var req struct {
+		SeasonNumber  *int    `json:"season_number"`
+		EpisodeNumber *int    `json:"episode_number"`
+		Title         *string `json:"title"`
+		RuntimeMin    *int    `json:"runtime_min"`
+		Synopsis      *string `json:"synopsis"`
+		VideoURL      *string `json:"video_url"`
+		ThumbnailURL  *string `json:"thumbnail_url"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, `{"error":"invalid body: `+err.Error()+`"}`, http.StatusBadRequest)
+		return
+	}
+
+	var setClauses []string
+	var args []interface{}
+	if req.SeasonNumber != nil {
+		setClauses = append(setClauses, "season_number = ?")
+		args = append(args, *req.SeasonNumber)
+	}
+	if req.EpisodeNumber != nil {
+		setClauses = append(setClauses, "episode_number = ?")
+		args = append(args, *req.EpisodeNumber)
+	}
+	if req.Title != nil {
+		setClauses = append(setClauses, "title = ?")
+		args = append(args, *req.Title)
+	}
+	if req.RuntimeMin != nil {
+		setClauses = append(setClauses, "runtime_min = ?")
+		args = append(args, *req.RuntimeMin)
+	}
+	if req.Synopsis != nil {
+		setClauses = append(setClauses, "synopsis = ?")
+		args = append(args, *req.Synopsis)
+	}
+	if req.VideoURL != nil {
+		setClauses = append(setClauses, "video_url = ?")
+		args = append(args, *req.VideoURL)
+	}
+	if req.ThumbnailURL != nil {
+		setClauses = append(setClauses, "thumbnail_url = ?")
+		args = append(args, *req.ThumbnailURL)
+	}
+
+	if len(setClauses) > 0 {
+		args = append(args, episodeID)
+		query := "UPDATE episodes SET " + strings.Join(setClauses, ", ") + " WHERE id = ?"
+		if _, err := database.DB.Exec(query, args...); err != nil {
+			http.Error(w, `{"error":"update episode failed: `+err.Error()+`"}`, http.StatusInternalServerError)
+			return
+		}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "id": episodeID})
+}
+
+// AdminDeleteEpisode — DELETE /api/admin/episodes/{episodeId}
+func AdminDeleteEpisode(w http.ResponseWriter, r *http.Request) {
+	episodeID := chi.URLParam(r, "episodeId")
+	_, err := database.DB.Exec("DELETE FROM episodes WHERE id = ?", episodeID)
+	if err != nil {
+		http.Error(w, `{"error":"failed deleting episode"}`, http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": true})
 }
 
 // AdminDeleteTitle — DELETE /api/admin/titles/{id}

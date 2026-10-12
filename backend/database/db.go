@@ -127,12 +127,27 @@ func createTables(driver string) error {
 		poster TEXT NOT NULL,
 		backdrop TEXT NOT NULL,
 		trailer TEXT,
+		video_url TEXT,
 		tone VARCHAR(50) NOT NULL,
 		original BOOLEAN NOT NULL DEFAULT FALSE,
 		kids BOOLEAN NOT NULL DEFAULT FALSE,
 		required_tier VARCHAR(50) NOT NULL DEFAULT 'free',
 		genres TEXT NOT NULL,
 		badges TEXT NOT NULL
+	);
+
+	CREATE TABLE IF NOT EXISTS episodes (
+		id VARCHAR(100) PRIMARY KEY,
+		title_id VARCHAR(100) NOT NULL,
+		season_number INT NOT NULL DEFAULT 1,
+		episode_number INT NOT NULL,
+		title VARCHAR(255) NOT NULL,
+		runtime_min INT NOT NULL DEFAULT 0,
+		synopsis TEXT,
+		video_url TEXT NOT NULL,
+		thumbnail_url TEXT,
+		created_at DATETIME NOT NULL,
+		FOREIGN KEY (title_id) REFERENCES titles(id) ON DELETE CASCADE
 	);
 
 	CREATE TABLE IF NOT EXISTS watchlist (
@@ -186,6 +201,39 @@ func createTables(driver string) error {
 		setting_value TEXT NOT NULL,
 		updated_at DATETIME NOT NULL
 	);
+
+	CREATE TABLE IF NOT EXISTS videos (
+		id VARCHAR(64) PRIMARY KEY,
+		title VARCHAR(255) NOT NULL,
+		status VARCHAR(32) NOT NULL DEFAULT 'uploaded',
+		master_key VARCHAR(512) NOT NULL,
+		duration DOUBLE NOT NULL DEFAULT 0,
+		error_message TEXT NULL,
+		created_at DATETIME NOT NULL,
+		updated_at DATETIME NOT NULL
+	);
+
+	CREATE TABLE IF NOT EXISTS user_devices (
+		id VARCHAR(64) PRIMARY KEY,
+		user_id VARCHAR(64) NOT NULL,
+		device_id VARCHAR(128) NOT NULL,
+		device_name VARCHAR(100) NOT NULL DEFAULT 'Unknown Device',
+		client_type VARCHAR(32) NOT NULL DEFAULT 'web',
+		last_used_at DATETIME NOT NULL,
+		created_at DATETIME NOT NULL,
+		UNIQUE(user_id, device_id),
+		FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+	);
+
+	CREATE TABLE IF NOT EXISTS playback_sessions (
+		session_id VARCHAR(64) PRIMARY KEY,
+		user_id VARCHAR(64) NOT NULL,
+		device_id VARCHAR(128) NOT NULL,
+		video_id VARCHAR(64) NOT NULL,
+		last_heartbeat_at DATETIME NOT NULL,
+		created_at DATETIME NOT NULL,
+		FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+	);
 	`
 
 	if driver == "mysql" {
@@ -217,9 +265,13 @@ func maskDSN(dsn string) string {
 
 func runMigrations(driver string) {
 	if driver == "mysql" {
-		_, _ = DB.Exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT FALSE")
-		_, _ = DB.Exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at DATETIME NULL")
-		_, _ = DB.Exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS last_active_at DATETIME NULL")
+		addColumnIfNotExists(DB, "users", "is_admin", "BOOLEAN NOT NULL DEFAULT FALSE")
+		addColumnIfNotExists(DB, "users", "last_login_at", "DATETIME NULL")
+		addColumnIfNotExists(DB, "users", "last_active_at", "DATETIME NULL")
+		addColumnIfNotExists(DB, "titles", "video_url", "TEXT NULL")
+		addColumnIfNotExists(DB, "titles", "trailer", "TEXT NULL")
+		addColumnIfNotExists(DB, "episodes", "video_url", "TEXT NOT NULL")
+		addColumnIfNotExists(DB, "episodes", "thumbnail_url", "TEXT NULL")
 		_, _ = DB.Exec("ALTER TABLE titles MODIFY COLUMN poster TEXT NOT NULL")
 		_, _ = DB.Exec("ALTER TABLE titles MODIFY COLUMN backdrop TEXT NOT NULL")
 		_, _ = DB.Exec("ALTER TABLE titles MODIFY COLUMN trailer TEXT NULL")
@@ -228,6 +280,22 @@ func runMigrations(driver string) {
 		_, _ = DB.Exec("ALTER TABLE titles MODIFY COLUMN tone VARCHAR(50) NOT NULL")
 		_, _ = DB.Exec("ALTER TABLE titles MODIFY COLUMN kind VARCHAR(50) NOT NULL")
 		_, _ = DB.Exec("ALTER TABLE titles MODIFY COLUMN required_tier VARCHAR(50) NOT NULL DEFAULT 'free'")
+	} else {
+		_, _ = DB.Exec("ALTER TABLE titles ADD COLUMN video_url TEXT")
+	}
+}
+
+func addColumnIfNotExists(db *sql.DB, tableName, columnName, columnDef string) {
+	var count int
+	query := "SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?"
+	err := db.QueryRow(query, tableName, columnName).Scan(&count)
+	if err == nil && count == 0 {
+		alterQuery := fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s %s", tableName, columnName, columnDef)
+		if _, alterErr := db.Exec(alterQuery); alterErr != nil {
+			log.Printf("[runMigrations] Error adding column %s to %s: %v", columnName, tableName, alterErr)
+		} else {
+			log.Printf("[runMigrations] ✓ Added column %s to %s successfully!", columnName, tableName)
+		}
 	}
 }
 

@@ -177,15 +177,7 @@ function NavUserActions() {
   const setUpgradeModalOpen = useAether((s) => s.setUpgradeModalOpen);
 
   if (!user) {
-    return (
-      <Link
-        to="/login"
-        className="hidden sm:inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-xs font-semibold text-accent-fg hover:opacity-90 transition-opacity shadow-sm"
-      >
-        <LogIn className="size-3.5" />
-        Sign In
-      </Link>
-    );
+    return null;
   }
 
   if (user.subscription_tier === "premium") {

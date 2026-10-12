@@ -25,7 +25,7 @@ FROM alpine:3.20
 
 WORKDIR /app
 
-RUN apk add --no-cache ca-certificates tzdata sqlite-libs
+RUN apk add --no-cache ca-certificates tzdata sqlite-libs ffmpeg
 
 # Copy binary from builder
 COPY --from=builder /app/armss-ott-backend /app/armss-ott-backend

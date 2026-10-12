@@ -1,0 +1,328 @@
+openapi: 3.0.3
+info:
+  title: ARMSS-OTT Playback & Video Ingest API
+  description: >
+    Adaptive Bitrate (ABR) Video Streaming & Playback API for ARMSS-OTT.
+    Serves dynamic HLS fMP4 playlists with presigned URLs, device limits,
+    entitlement verification, and watch progress synchronization.
+  version: 1.0.0
+servers:
+  - url: http://localhost:8081/api
+    description: Local Development Backend
+  - url: https://api.armss-ott.com/api
+    description: Production API Gateway
+
+paths:
+  /admin/videos:
+    post:
+      summary: Create video record & get presigned master upload URL
+      description: Registers a new video record and generates an S3 presigned PUT upload URL to the "masters" bucket.
+      tags:
+        - Video Ingest
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - title
+              properties:
+                title:
+                  type: string
+                  example: "Interstellar 4K Showcase"
+      responses:
+        '201':
+          description: Video record created and upload URL granted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    format: uuid
+                  title:
+                    type: string
+                  status:
+                    type: string
+                    example: "uploaded"
+                  master_key:
+                    type: string
+                  upload_url:
+                    type: string
+                    format: uri
+        '400':
+          description: Missing or invalid title
+        '401':
+          description: Unauthorized
+
+  /admin/videos/{id}/complete:
+    post:
+      summary: Trigger video transcoding
+      description: Verifies master uploaded in S3 and enqueues an Asynq transcode_video background task.
+      tags:
+        - Video Ingest
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Transcoding job enqueued
+        '400':
+          description: Master file not found in storage
+        '404':
+          description: Video not found
+
+  /videos/{id}/playback:
+    get:
+      summary: Request playback ticket & manifest URL
+      description: >
+        Checks active subscription entitlement, registers the client device (max 5),
+        and verifies concurrent stream limits. Returns the manifest URL with a short-lived signed token.
+      tags:
+        - Playback
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Title ID or Video UUID
+        - name: X-Device-ID
+          in: header
+          required: false
+          schema:
+            type: string
+          description: Unique client device ID (UUID/fingerprint)
+        - name: X-Client-Type
+          in: header
+          required: false
+          schema:
+            type: string
+            enum: [web, mobile, tv]
+          description: Client device type (mobile caps at 1080p)
+      responses:
+        '200':
+          description: Playback session granted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  manifestUrl:
+                    type: string
+                    example: "/api/videos/vikram/master.m3u8?token=eyJhbGci..."
+                  maxHeight:
+                    type: integer
+                    example: 1080
+                  resumePositionSec:
+                    type: number
+                    format: double
+                    example: 145.2
+        '401':
+          description: Missing or invalid Bearer authentication token
+        '403':
+          description: Entitlement, device limit, or concurrent stream limit exceeded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    enum: [tier_upgrade_required, device_limit_exceeded, concurrent_stream_limit_exceeded]
+                  message:
+                    type: string
+        '404':
+          description: Video or title not found
+
+  /videos/{id}/master.m3u8:
+    get:
+      summary: Fetch dynamic master playlist
+      description: >
+        Fetches master playlist from S3, filters out rungs exceeding client's maxHeight,
+        and rewrites sub-playlist URIs with signed 5-minute tokens.
+      tags:
+        - Playback
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: token
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Signed playback token from /playback
+      responses:
+        '200':
+          description: Rewritten HLS master playlist
+          content:
+            application/vnd.apple.mpegurl:
+              schema:
+                type: string
+        '401':
+          description: Expired or invalid playback token
+        '404':
+          description: Playlist not found
+
+  /videos/{id}/{rendition}.m3u8:
+    get:
+      summary: Fetch dynamic rendition media playlist
+      description: >
+        Fetches media playlist from S3 and rewrites all segment URIs (.m4s) and initialization maps
+        into 5-minute presigned S3 URLs directly pointing to storage.
+      tags:
+        - Playback
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: rendition
+          in: path
+          required: true
+          schema:
+            type: string
+            example: "stream_0.m3u8"
+        - name: token
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Rewritten HLS media playlist with presigned segment URLs
+          content:
+            application/vnd.apple.mpegurl:
+              schema:
+                type: string
+        '401':
+          description: Expired or invalid playback token
+        '404':
+          description: Rendition playlist not found
+
+  /videos/{id}/progress:
+    post:
+      summary: Sync watch progress
+      description: Updates the user's current watch position every 15 seconds.
+      tags:
+        - Playback
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - time_seconds
+                - progress_percent
+              properties:
+                time_seconds:
+                  type: number
+                  format: double
+                  example: 245.5
+                progress_percent:
+                  type: number
+                  format: double
+                  example: 45.2
+                profile_id:
+                  type: string
+                  example: "default"
+                device_id:
+                  type: string
+      responses:
+        '200':
+          description: Watch progress updated
+        '401':
+          description: Unauthorized
+
+  /videos/{id}/heartbeat:
+    post:
+      summary: Send streaming session heartbeat
+      description: Refreshes active stream session timestamp used to enforce concurrent stream limits.
+      tags:
+        - Playback
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - device_id
+              properties:
+                session_id:
+                  type: string
+                  format: uuid
+                device_id:
+                  type: string
+      responses:
+        '200':
+          description: Heartbeat recorded
+        '401':
+          description: Unauthorized
+
+  /videos/{id}/key:
+    get:
+      summary: Fetch AES-128 HLS decryption key
+      description: Serves 16-byte AES-128 key when HLS encryption is enabled.
+      tags:
+        - Playback
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: token
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 16-byte binary decryption key
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '401':
+          description: Unauthorized
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

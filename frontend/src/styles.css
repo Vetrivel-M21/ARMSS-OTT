@@ -336,3 +336,40 @@ button,
   animation: anamorphic-streak 14s ease-in-out infinite;
   will-change: transform, opacity;
 }
+
+/* ─────────────────────────────────────────
+   Video Player Seek & Volume Sliders
+───────────────────────────────────────── */
+.player-range {
+  -webkit-appearance: none;
+  appearance: none;
+}
+.player-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #e50914;
+  cursor: pointer;
+  box-shadow: 0 0 8px rgba(229, 9, 20, 0.8), 0 0 2px #fff;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.player-range:hover::-webkit-slider-thumb {
+  transform: scale(1.25);
+  box-shadow: 0 0 12px rgba(229, 9, 20, 1), 0 0 3px #fff;
+}
+.player-range::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #e50914;
+  cursor: pointer;
+  border: none;
+  box-shadow: 0 0 8px rgba(229, 9, 20, 0.8), 0 0 2px #fff;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.player-range:hover::-moz-range-thumb {
+  transform: scale(1.25);
+  box-shadow: 0 0 12px rgba(229, 9, 20, 1), 0 0 3px #fff;
+}

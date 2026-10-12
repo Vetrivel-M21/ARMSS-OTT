@@ -1,15 +1,19 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
 	"os"
 	"path/filepath"
-	"strings"
+	"time"
 
 	"armss-ott-backend/database"
 	"armss-ott-backend/handlers"
 	"armss-ott-backend/middleware"
+	"armss-ott-backend/services/metrics"
+	"armss-ott-backend/services/storage"
+	"armss-ott-backend/services/transcode"
 
 	"github.com/go-chi/chi/v5"
 	chiMiddleware "github.com/go-chi/chi/v5/middleware"
@@ -35,6 +39,42 @@ func main() {
 	// 2. Seed Database with Demo Accounts and Content
 	database.SeedDatabase()
 
+	// 2.5 Initialize S3 Storage and Asynq Task Queue
+	storageSvc, storageErr := storage.InitFromEnv()
+	if storageErr != nil {
+		log.Printf("[Storage] Warning: Failed to initialize S3 storage: %v", storageErr)
+	} else {
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			if err := storageSvc.EnsureBuckets(ctx); err != nil {
+				log.Printf("[Storage] Warning: EnsureBuckets error: %v", err)
+			}
+		}()
+	}
+
+	queueClient, queueErr := transcode.InitQueueClient()
+	if queueErr != nil {
+		log.Printf("[Asynq] Warning: Failed to connect to Redis queue: %v", queueErr)
+	} else {
+		defer queueClient.Close()
+	}
+
+	// Start transcoding worker if enabled (default true)
+	if os.Getenv("ENABLE_WORKER") != "false" && storageSvc != nil {
+		worker, workerErr := transcode.StartWorker(storageSvc, db)
+		if workerErr != nil {
+			log.Printf("[Worker] Warning: Failed to start transcode worker: %v", workerErr)
+		} else {
+			defer worker.Stop()
+		}
+	}
+
+	if os.Getenv("RUN_AS_WORKER_ONLY") == "true" {
+		log.Println("[Worker] Running in dedicated Transcode Worker mode. Awaiting jobs from Redis...")
+		select {}
+	}
+
 	// 3. Router Setup
 	r := chi.NewRouter()
 
@@ -42,39 +82,38 @@ func main() {
 	r.Use(chiMiddleware.Logger)
 	r.Use(chiMiddleware.Recoverer)
 
-	// Cross-Origin Resource Sharing (CORS)
-	allowedOrigins := []string{"http://localhost:8080", "http://127.0.0.1:8080", "http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:*", "http://127.0.0.1:*"}
-	if custom := os.Getenv("ALLOWED_ORIGINS"); custom != "" {
-		for _, o := range strings.Split(custom, ",") {
-			trimmed := strings.TrimSpace(o)
-			if trimmed != "" {
-				allowedOrigins = append(allowedOrigins, trimmed)
-			}
-		}
-	}
+	// Cross-Origin Resource Sharing (CORS) — allow localhost, LAN IPs, and mobile devices
 	r.Use(cors.Handler(cors.Options{
-		AllowedOrigins:   allowedOrigins,
-		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token"},
-		ExposedHeaders:   []string{"Link"},
+		AllowedOrigins:   []string{"https://*", "http://*"},
+		AllowOriginFunc:  func(r *http.Request, origin string) bool { return true },
+		AllowedHeaders:   []string{"*"},
+		ExposedHeaders:   []string{"*"},
 		AllowCredentials: true,
 		MaxAge:           300,
 	}))
 
 	// 4. API Routes
 	r.Route("/api", func(r chi.Router) {
-		// Health check
+		// Health & Metrics
 		r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(`{"status":"healthy","service":"armss-ott-backend","driver":"` + database.DriverName + `"}`))
 		})
+		r.Get("/metrics", metrics.Handler)
 
 		// Public Auth
 		r.Post("/auth/register", handlers.Register)
+		r.Post("/auth/register/send-otp", handlers.RegisterSendOTP)
+		r.Post("/auth/register/verify-otp", handlers.RegisterVerifyOTP)
 		r.Post("/auth/login", handlers.Login)
 		r.Post("/auth/google", handlers.GoogleAuth)
+		r.Post("/auth/forgot-password", handlers.ForgotPasswordRequest)
 		r.Post("/auth/forgot-password/request", handlers.ForgotPasswordRequest)
+		r.Post("/auth/reset-password", handlers.ForgotPasswordReset)
 		r.Post("/auth/forgot-password/reset", handlers.ForgotPasswordReset)
+
+		// Public Profiles & Fallback
+		r.With(middleware.OptionalAuth).Get("/profiles", handlers.GetProfiles)
 
 		// Public Subscription Plans
 		r.Get("/subscription/plans", handlers.GetPlans)
@@ -82,6 +121,7 @@ func main() {
 		// Public Catalog
 		r.Get("/titles", handlers.ListTitles)
 		r.Get("/titles/{id}", handlers.GetTitle)
+		r.Get("/titles/{id}/episodes", handlers.PublicListEpisodes)
 
 		// Optional Auth Playback Ticket (Checks Tier Entitlement)
 		r.With(middleware.OptionalAuth).Post("/titles/{id}/playback-ticket", handlers.CheckPlaybackTicket)
@@ -93,6 +133,11 @@ func main() {
 			// Current User info
 			r.Get("/auth/me", handlers.Me)
 
+			// Profiles Management
+			r.Post("/profiles", handlers.CreateProfile)
+			r.Put("/profiles/{id}", handlers.UpdateProfile)
+			r.Delete("/profiles/{id}", handlers.DeleteProfile)
+
 			// Subscription actions
 			r.Post("/subscription/upgrade", handlers.UpgradeSubscription)
 			r.Post("/subscription/cancel", handlers.CancelSubscription)
@@ -100,6 +145,8 @@ func main() {
 			// Cloud Sync
 			r.Get("/watchlist", handlers.GetWatchlist)
 			r.Post("/watchlist/toggle", handlers.ToggleWatchlist)
+			r.Get("/my-list", handlers.GetWatchlist)
+			r.Post("/my-list/toggle", handlers.ToggleWatchlist)
 
 			r.Get("/progress", handlers.GetProgress)
 			r.Post("/progress/heartbeat", handlers.HeartbeatProgress)
@@ -126,6 +173,10 @@ func main() {
 			r.Post("/admin/titles", handlers.AdminCreateTitle)
 			r.Put("/admin/titles/{id}", handlers.AdminUpdateTitle)
 			r.Delete("/admin/titles/{id}", handlers.AdminDeleteTitle)
+			r.Get("/admin/titles/{id}/episodes", handlers.AdminListEpisodes)
+			r.Post("/admin/titles/{id}/episodes", handlers.AdminCreateEpisode)
+			r.Put("/admin/episodes/{episodeId}", handlers.AdminUpdateEpisode)
+			r.Delete("/admin/episodes/{episodeId}", handlers.AdminDeleteEpisode)
 			r.Get("/admin/analytics", handlers.AdminGetAnalyticsOverview)
 			r.Get("/admin/analytics/overview", handlers.AdminGetAnalyticsOverview)
 			r.Get("/admin/analytics/daily-trends", handlers.AdminGetDailyTrends)
@@ -135,7 +186,29 @@ func main() {
 			r.Post("/admin/upload", handlers.AdminUpload)
 			r.Put("/admin/settings/layout", handlers.AdminUpdateLayoutSettings)
 			r.Delete("/admin/settings/layout", handlers.AdminResetLayoutSettings)
+
+			// Video Ingest & Transcoding Pipeline
+			r.Post("/admin/videos", handlers.AdminCreateVideo)
+			r.Post("/admin/videos/{id}/complete", handlers.AdminCompleteVideoUpload)
+			r.Get("/admin/videos", handlers.AdminListVideos)
+			r.Get("/admin/videos/{id}", handlers.AdminGetVideo)
 		})
+
+		// Direct access fallback for video endpoints (e.g. testing / integration)
+		r.Post("/videos", handlers.AdminCreateVideo)
+		r.Post("/videos/{id}/complete", handlers.AdminCompleteVideoUpload)
+		r.Get("/videos", handlers.AdminListVideos)
+		r.Get("/videos/{id}", handlers.AdminGetVideo)
+
+		// Playback API
+		r.With(middleware.RequireAuth).Get("/videos/{id}/playback", handlers.GetPlaybackTicket)
+		r.Get("/videos/{id}/master.m3u8", handlers.GetMasterPlaylist)
+		r.Get("/videos/{id}/{rendition}.m3u8", handlers.GetRenditionPlaylist)
+		r.Get("/videos/{id}/stream_{num}.m3u8", handlers.GetRenditionPlaylist)
+		r.With(middleware.RequireAuth).Post("/videos/{id}/progress", handlers.SaveWatchProgress)
+		r.With(middleware.RequireAuth).Post("/videos/{id}/heartbeat", handlers.SendStreamHeartbeat)
+		r.Get("/videos/{id}/key", handlers.GetHLSKey)
+
 		// Public notification endpoint (to show admin broadcast to all users)
 		r.Get("/notifications/latest", handlers.GetNotification)
 
@@ -143,7 +216,24 @@ func main() {
 		r.Get("/settings/layout", handlers.GetLayoutSettings)
 	})
 
-	// 5. Static File Serving for Uploads (images and videos)
+	// Ingest Pipeline root routes (for direct POST /admin/videos calls)
+	r.Post("/admin/videos", handlers.AdminCreateVideo)
+	r.Post("/admin/videos/{id}/complete", handlers.AdminCompleteVideoUpload)
+	r.Get("/admin/videos", handlers.AdminListVideos)
+	r.Get("/admin/videos/{id}", handlers.AdminGetVideo)
+
+	// Playback API root routes (for direct /videos/:id/... calls)
+	r.With(middleware.RequireAuth).Get("/videos/{id}/playback", handlers.GetPlaybackTicket)
+	r.Get("/videos/{id}/master.m3u8", handlers.GetMasterPlaylist)
+	r.Get("/videos/{id}/{rendition}.m3u8", handlers.GetRenditionPlaylist)
+	r.Get("/videos/{id}/stream_{num}.m3u8", handlers.GetRenditionPlaylist)
+	r.With(middleware.RequireAuth).Post("/videos/{id}/progress", handlers.SaveWatchProgress)
+	r.With(middleware.RequireAuth).Post("/videos/{id}/heartbeat", handlers.SendStreamHeartbeat)
+	r.Get("/videos/{id}/key", handlers.GetHLSKey)
+	r.Get("/metrics", metrics.Handler)
+
+
+	// 5. Static File Serving for Uploads, Posters, Backdrops, and Trailers
 	uploadsDir := os.Getenv("UPLOADS_DIR")
 	if uploadsDir == "" {
 		uploadsDir = filepath.Join("..", "frontend", "public", "uploads")
@@ -156,6 +246,13 @@ func main() {
 	}
 	_ = os.MkdirAll(uploadsDir, 0755)
 	r.Handle("/uploads/*", http.StripPrefix("/uploads/", http.FileServer(http.Dir(uploadsDir))))
+
+	frontendPublic := filepath.Join("..", "frontend", "public")
+	if _, err := os.Stat(frontendPublic); err == nil {
+		r.Handle("/posters/*", http.StripPrefix("/posters/", http.FileServer(http.Dir(filepath.Join(frontendPublic, "posters")))))
+		r.Handle("/backdrops/*", http.StripPrefix("/backdrops/", http.FileServer(http.Dir(filepath.Join(frontendPublic, "backdrops")))))
+		r.Handle("/trailers/*", http.StripPrefix("/trailers/", http.FileServer(http.Dir(filepath.Join(frontendPublic, "trailers")))))
+	}
 
 	port := os.Getenv("PORT")
 	if port == "" {

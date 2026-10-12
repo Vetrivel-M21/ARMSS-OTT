@@ -58,9 +58,18 @@ export function PlayerView({
   const fallbackDuration = (episode?.runtime ?? title.runtimeMin) * 60;
   const isLive = title.kind === "live";
 
-  // If title has a trailer or videoUrl, use it; otherwise provide a default sample MP4 stream
+  // If episode has a video URL, use it; otherwise check title videoUrl or trailer; fallback to sample
   const [backupStream, setBackupStream] = useState<string | null>(null);
-  const videoSrc = backupStream || title.videoUrl || title.trailer || "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4";
+  const [ticketStream, setTicketStream] = useState<string | null>(null);
+  const videoSrc =
+    backupStream ||
+    ticketStream ||
+    episode?.video_url ||
+    episode?.videoUrl ||
+    title.videoUrl ||
+    (title as any).video_url ||
+    title.trailer ||
+    "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4";
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const shellRef = useRef<HTMLDivElement>(null);
@@ -97,17 +106,26 @@ export function PlayerView({
   useEffect(() => {
     if (!user) return;
     let isMounted = true;
+    const targetVideoId = episode?.id || title.id;
     api
-      .checkPlaybackTicket(title.id)
+      .checkPlaybackTicket(targetVideoId)
       .then((ticket) => {
         if (!isMounted) return;
-        if (ticket.allowed === false || ticket.error === "tier_upgrade_required") {
+        const isFree =
+          title.required_tier === "free" ||
+          (title as any).requiredTier === "free" ||
+          (!title.required_tier && !(title as any).requiredTier);
+
+        if (!isFree && (ticket.allowed === false || ticket.error === "tier_upgrade_required")) {
           setPlaybackAllowed(false);
           setPlaying(false);
           setTicketMessage(ticket.message || "Upgrade your subscription to watch this exclusive title in full quality.");
           setUpgradeModalOpen(true, title.title);
         } else {
           setPlaybackAllowed(true);
+          if (ticket.manifest_url) {
+            setTicketStream(ticket.manifest_url);
+          }
         }
       })
       .catch(() => {
@@ -117,7 +135,7 @@ export function PlayerView({
     return () => {
       isMounted = false;
     };
-  }, [title.id, title.title, user?.subscription_tier, user, setUpgradeModalOpen]);
+  }, [title.id, title.title, episode?.id, user?.subscription_tier, user, setUpgradeModalOpen]);
 
   const [muted, setMuted] = useState(false);
   const [volume, setVolume] = useState(0.8);
@@ -610,7 +628,12 @@ export function PlayerView({
               aria-label="Seek"
               disabled={isLive}
               onChange={(e) => onSeek(Number(e.target.value))}
-              className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-white/20 accent-accent disabled:opacity-50 transition-all hover:h-2"
+              style={{
+                background: isLive
+                  ? "#e50914"
+                  : `linear-gradient(to right, #e50914 ${clamp(progress * 100, 0, 100)}%, rgba(255, 255, 255, 0.25) ${clamp(progress * 100, 0, 100)}%)`,
+              }}
+              className="player-range h-1.5 w-full cursor-pointer rounded-full disabled:opacity-50 transition-all hover:h-2.5"
             />
             <span className="w-28 shrink-0 text-right text-xs tabular-nums text-muted font-medium">
               {isLive
@@ -665,7 +688,7 @@ export function PlayerView({
               onClick={() => setMuted((m) => !m)}
             >
               {muted || volume === 0 ? (
-                <VolumeX className="size-5 text-accent" />
+                <VolumeX className="size-5 text-[#e50914]" />
               ) : (
                 <Volume2 className="size-5" />
               )}
@@ -679,7 +702,10 @@ export function PlayerView({
               step={0.05}
               value={muted ? 0 : volume}
               aria-label="Volume"
-              className="hidden h-1.5 w-24 cursor-pointer appearance-none rounded-full bg-white/20 accent-accent sm:block"
+              style={{
+                background: `linear-gradient(to right, #e50914 ${(muted ? 0 : volume) * 100}%, rgba(255, 255, 255, 0.25) ${(muted ? 0 : volume) * 100}%)`,
+              }}
+              className="player-range hidden h-1.5 w-24 cursor-pointer rounded-full sm:block transition-all hover:h-2"
               onChange={(e) => {
                 const v = Number(e.target.value);
                 setVolume(v);

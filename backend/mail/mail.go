@@ -30,6 +30,19 @@ func SendPasswordResetOTP(toEmail, userName, otpCode string) error {
 	return send(toEmail, subject, "text/html", body)
 }
 
+// SendRegistrationOTP sends a branded HTML email presenting a 6-digit registration verification code.
+func SendRegistrationOTP(toEmail, userName, otpCode string) error {
+	subject := "ARMSS-OTT — Verify Your Email Address"
+	heading := "Welcome to ARMSS-OTT"
+	message := fmt.Sprintf("Hello %s,<br><br>Thank you for creating an account with ARMSS-OTT. Enter the one-time verification code below to activate your account and start streaming.", html.EscapeString(userName))
+
+	// Always log OTP to server console for zero-downtime developer convenience
+	log.Printf("[ARMSS-OTT OTP] >>> Registration verification code for %s (%s): %s (Valid for 15 mins) <<<", toEmail, userName, otpCode)
+
+	body := otpEmailHTML(heading, message, otpCode)
+	return send(toEmail, subject, "text/html", body)
+}
+
 func send(to, subject, contentType, body string) error {
 	// 1. Try Bird Email REST API first if configured via environment
 	birdKey := os.Getenv("BIRD_API_KEY")

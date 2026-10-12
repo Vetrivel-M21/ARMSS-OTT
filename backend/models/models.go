@@ -80,6 +80,20 @@ type Profile struct {
 	CreatedAt   time.Time `json:"created_at"`
 }
 
+// Episode represents a single episode of a series
+type Episode struct {
+	ID           string    `json:"id"`
+	TitleID      string    `json:"title_id"`
+	SeasonNumber int       `json:"season_number"`
+	EpisodeNumber int      `json:"episode_number"`
+	Title        string    `json:"title"`
+	RuntimeMin   int       `json:"runtime_min"`
+	Synopsis     string    `json:"synopsis"`
+	VideoURL     string    `json:"video_url"`
+	ThumbnailURL string    `json:"thumbnail_url,omitempty"`
+	CreatedAt    time.Time `json:"created_at"`
+}
+
 // Title represents movie/series catalog item
 type Title struct {
 	ID          string           `json:"id"`
@@ -94,12 +108,17 @@ type Title struct {
 	Poster      string           `json:"poster"`
 	Backdrop    string           `json:"backdrop"`
 	Trailer     string           `json:"trailer,omitempty"`
+	VideoURL    string           `json:"video_url,omitempty"`
 	Tone        string           `json:"tone"`
 	Original    bool             `json:"original"`
 	Kids        bool             `json:"kids"`
 	RequiredTier SubscriptionTier `json:"required_tier"` // "free", "standard", "premium"
-	Genres      []string         `json:"genres"`
-	Badges      []string         `json:"badges"`
+	Genres       []string         `json:"genres"`
+	Badges       []string         `json:"badges"`
+	Featured     bool             `json:"featured"`
+	Trending     bool             `json:"trending"`
+	Rank         *int             `json:"rank,omitempty"`
+	Episodes     []Episode        `json:"episodes,omitempty"`
 }
 
 // WatchlistEntry represents a saved title

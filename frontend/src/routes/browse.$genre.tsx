@@ -12,19 +12,23 @@ export const Route = createFileRoute("/browse/$genre")({
 function BrowsePage() {
   const { genre } = Route.useParams();
   const profile = useAether((s) => s.activeProfile) ?? "arjun";
-  const catalogVersion = useAether((s) => s.catalogVersion);
-  const { heading, items } = browseCollection(genre, profile);
+  const displaySettings = useAether((s) => s.displaySettings);
+  const navVis = displaySettings?.navVisibility;
+  const { heading, items } = browseCollection(genre, profile, navVis);
 
   return (
     <div className="mx-auto max-w-7xl px-4 pb-20 pt-28 sm:px-8 sm:pt-36">
       <div className="flex flex-wrap items-center gap-2 border-b border-white/10 pb-5">
         {["films", "series", ...GENRES.map((g) => g.toLowerCase())]
           .filter((g, i, arr) => arr.indexOf(g) === i)
-          .filter((g) =>
-            profile === "kids"
-              ? g === "family" || g === "series" || g === "documentary"
-              : true,
-          )
+          .filter((g) => {
+            if (navVis?.films === false && (g === "films" || g === "film")) return false;
+            if (navVis?.series === false && g === "series") return false;
+            if (profile === "kids") {
+              return g === "family" || g === "series" || g === "documentary";
+            }
+            return true;
+          })
           .map((g) => {
             const isActive = g === genre.toLowerCase();
             return (
