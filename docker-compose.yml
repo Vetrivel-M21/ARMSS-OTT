@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # ----------------------------------------------------
   # ARMSS-OTT Nginx Gateway & Reverse Proxy
@@ -65,46 +63,26 @@ services:
 
   # ----------------------------------------------------
   # MinIO Service (S3-Compatible Object Storage)
-  # Internal S3 for HLS video chunks and master files.
+  # Bitnami image with auto-bucket initialization.
   # ----------------------------------------------------
   minio:
-    image: quay.io/minio/minio:latest
+    image: bitnami/minio:latest
     container_name: armss_ott_minio
     restart: always
-    command: server /data --console-address ":9001"
     environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      - MINIO_ROOT_USER=${MINIO_ROOT_USER:-minioadmin}
+      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD:-minioadmin}
+      - MINIO_DEFAULT_BUCKETS=masters:public,hls:public
     volumes:
-      - minio_data:/data
+      - minio_data:/bitnami/minio/data
     networks:
       - armss_ott_network
     healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
+      test: ["CMD-SHELL", "timeout 2 bash -c '</dev/tcp/localhost/9000' || exit 1"]
       interval: 5s
       timeout: 5s
-      retries: 5
-
-  # ----------------------------------------------------
-  # MinIO Init (Auto-create "masters" and "hls" buckets)
-  # ----------------------------------------------------
-  minio-init:
-    image: quay.io/minio/mc:latest
-    container_name: armss_ott_minio_init
-    depends_on:
-      minio:
-        condition: service_healthy
-    networks:
-      - armss_ott_network
-    entrypoint: >
-      /bin/sh -c "
-      /usr/bin/mc alias set local http://minio:9000 ${MINIO_ROOT_USER:-minioadmin} ${MINIO_ROOT_PASSWORD:-minioadmin};
-      /usr/bin/mc mb --ignore-existing local/masters;
-      /usr/bin/mc mb --ignore-existing local/hls;
-      /usr/bin/mc anonymous set download local/hls;
-      echo 'MinIO buckets masters and hls initialized successfully.';
-      exit 0;
-      "
+      retries: 10
+      start_period: 15s
 
   # ----------------------------------------------------
   # ARMSS-OTT Backend Service (Go API Server)
