@@ -68,7 +68,7 @@ services:
   # Internal S3 for HLS video chunks and master files.
   # ----------------------------------------------------
   minio:
-    image: minio/minio:latest
+    image: quay.io/minio/minio:latest
     container_name: armss_ott_minio
     restart: always
     command: server /data --console-address ":9001"
@@ -89,7 +89,7 @@ services:
   # MinIO Init (Auto-create "masters" and "hls" buckets)
   # ----------------------------------------------------
   minio-init:
-    image: minio/mc:latest
+    image: quay.io/minio/mc:latest
     container_name: armss_ott_minio_init
     depends_on:
       minio:
