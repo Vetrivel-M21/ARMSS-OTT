@@ -34,16 +34,17 @@ services:
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_PASSWORD:-Vetri@123}
       MYSQL_DATABASE: armss_ott
+    command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci"]
     volumes:
       - mysql_data:/var/lib/mysql
     networks:
       - armss_ott_network
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_PASSWORD:-Vetri@123}"]
-      interval: 5s
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p\"$$MYSQL_ROOT_PASSWORD\" --silent || mysqladmin ping -h 127.0.0.1 --silent"]
+      interval: 10s
       timeout: 5s
-      retries: 10
-      start_period: 15s
+      retries: 20
+      start_period: 30s
 
   # ----------------------------------------------------
   # Redis Service (Task Queue for Asynq)
