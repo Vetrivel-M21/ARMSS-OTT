@@ -1,35 +1,36 @@
 # ----------------------------------------------------
 # ARMSS-OTT High-Performance Go Backend Dockerfile
+# Using Debian Bookworm for 100% reliable network package downloads
 # ----------------------------------------------------
-FROM golang:1.24-alpine AS builder
+FROM golang:1.24-bookworm AS builder
 
 WORKDIR /app
 
 ENV GOTOOLCHAIN=auto
 
-# Install build dependencies
-RUN sed -i 's|https://dl-cdn.alpinelinux.org|http://dl-cdn.alpinelinux.org|g' /etc/apk/repositories && \
-    apk add --no-cache git ca-certificates tzdata
-
-# Download Go modules
+# Download Go modules (git and ca-certificates are pre-installed in golang:bookworm)
 COPY go.mod go.sum ./
 RUN go mod download
 
 # Copy source code
 COPY . .
 
-# Build statically compiled binary
+# Build statically compiled Linux binary
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-w -s" -o armss-ott-backend .
 
 # ----------------------------------------------------
-# Final Minimal Distroless / Alpine Image
+# Final Minimal Production Image
 # ----------------------------------------------------
-FROM alpine:3.20
+FROM debian:bookworm-slim
 
 WORKDIR /app
 
-RUN sed -i 's|https://dl-cdn.alpinelinux.org|http://dl-cdn.alpinelinux.org|g' /etc/apk/repositories && \
-    apk add --no-cache ca-certificates tzdata sqlite-libs ffmpeg
+# Install FFmpeg, CA certificates, and timezones from Debian's CDN
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    tzdata \
+    ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
 
 # Copy binary from builder
 COPY --from=builder /app/armss-ott-backend /app/armss-ott-backend
