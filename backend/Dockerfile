@@ -2,11 +2,9 @@
 # ARMSS-OTT High-Performance Go Backend Dockerfile
 # Using Debian Bookworm for 100% reliable network package downloads
 # ----------------------------------------------------
-FROM golang:1.24-bookworm AS builder
+FROM golang:1.26-bookworm AS builder
 
 WORKDIR /app
-
-ENV GOTOOLCHAIN=auto
 
 # Download Go modules (git and ca-certificates are pre-installed in golang:bookworm)
 COPY go.mod go.sum ./
