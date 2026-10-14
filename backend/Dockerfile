@@ -8,7 +8,8 @@ WORKDIR /app
 ENV GOTOOLCHAIN=auto
 
 # Install build dependencies
-RUN apk add --no-cache git ca-certificates tzdata
+RUN sed -i 's|https://dl-cdn.alpinelinux.org|http://dl-cdn.alpinelinux.org|g' /etc/apk/repositories && \
+    apk add --no-cache git ca-certificates tzdata
 
 # Download Go modules
 COPY go.mod go.sum ./
@@ -27,7 +28,8 @@ FROM alpine:3.20
 
 WORKDIR /app
 
-RUN apk add --no-cache ca-certificates tzdata sqlite-libs ffmpeg
+RUN sed -i 's|https://dl-cdn.alpinelinux.org|http://dl-cdn.alpinelinux.org|g' /etc/apk/repositories && \
+    apk add --no-cache ca-certificates tzdata sqlite-libs ffmpeg
 
 # Copy binary from builder
 COPY --from=builder /app/armss-ott-backend /app/armss-ott-backend

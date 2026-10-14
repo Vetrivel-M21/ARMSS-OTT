@@ -1,3 +1,5 @@
+name: armss-ott
+
 services:
   # ----------------------------------------------------
   # ARMSS-OTT Nginx Gateway & Reverse Proxy
