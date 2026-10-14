@@ -17,7 +17,7 @@ services:
     depends_on:
       - frontend
       - backend
-      - minio
+      - seaweedfs
     networks:
       - armss_ott_network
 
@@ -62,27 +62,19 @@ services:
       retries: 5
 
   # ----------------------------------------------------
-  # MinIO Service (S3-Compatible Object Storage)
-  # Bitnami image with auto-bucket initialization.
+  # SeaweedFS Service (High-Speed S3-Compatible Storage)
+  # Distributed, ultra-fast S3 storage for video chunks.
   # ----------------------------------------------------
-  minio:
-    image: bitnami/minio:latest
-    container_name: armss_ott_minio
+  seaweedfs:
+    image: chrislusf/seaweedfs:latest
+    container_name: armss_ott_seaweedfs
     restart: always
-    environment:
-      - MINIO_ROOT_USER=${MINIO_ROOT_USER:-minioadmin}
-      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD:-minioadmin}
-      - MINIO_DEFAULT_BUCKETS=masters:public,hls:public
+    command: "server -s3 -dir=/data -ip.bind=0.0.0.0 -s3.config=/etc/seaweedfs/s3.json"
     volumes:
-      - minio_data:/bitnami/minio/data
+      - seaweedfs_data:/data
+      - ./seaweedfs/s3.json:/etc/seaweedfs/s3.json:ro
     networks:
       - armss_ott_network
-    healthcheck:
-      test: ["CMD-SHELL", "timeout 2 bash -c '</dev/tcp/localhost/9000' || exit 1"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-      start_period: 15s
 
   # ----------------------------------------------------
   # ARMSS-OTT Backend Service (Go API Server)
@@ -105,9 +97,9 @@ services:
       - MYSQL_PASSWORD=${MYSQL_PASSWORD:-Vetri@123}
       - MYSQL_DB=armss_ott
       - REDIS_ADDR=redis:6379
-      - S3_ENDPOINT=http://minio:9000
-      - S3_ACCESS_KEY=${MINIO_ROOT_USER:-minioadmin}
-      - S3_SECRET_KEY=${MINIO_ROOT_PASSWORD:-minioadmin}
+      - S3_ENDPOINT=http://seaweedfs:8333
+      - S3_ACCESS_KEY=${S3_ACCESS_KEY:-ottadmin}
+      - S3_SECRET_KEY=${S3_SECRET_KEY:-SuperSecretMinioPassword2026}
       - S3_REGION=us-east-1
       - S3_USE_PATH_STYLE=true
       - S3_MASTERS_BUCKET=masters
@@ -125,8 +117,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      minio:
-        condition: service_healthy
+      seaweedfs:
+        condition: service_started
     networks:
       - armss_ott_network
 
@@ -148,9 +140,9 @@ services:
       - MYSQL_PASSWORD=${MYSQL_PASSWORD:-Vetri@123}
       - MYSQL_DB=armss_ott
       - REDIS_ADDR=redis:6379
-      - S3_ENDPOINT=http://minio:9000
-      - S3_ACCESS_KEY=${MINIO_ROOT_USER:-minioadmin}
-      - S3_SECRET_KEY=${MINIO_ROOT_PASSWORD:-minioadmin}
+      - S3_ENDPOINT=http://seaweedfs:8333
+      - S3_ACCESS_KEY=${S3_ACCESS_KEY:-ottadmin}
+      - S3_SECRET_KEY=${S3_SECRET_KEY:-SuperSecretMinioPassword2026}
       - S3_REGION=us-east-1
       - S3_USE_PATH_STYLE=true
       - S3_MASTERS_BUCKET=masters
@@ -161,8 +153,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      minio:
-        condition: service_healthy
+      seaweedfs:
+        condition: service_started
     networks:
       - armss_ott_network
 
@@ -193,7 +185,7 @@ volumes:
     driver: local
   redis_data:
     driver: local
-  minio_data:
+  seaweedfs_data:
     driver: local
   backend_uploads:
     driver: local

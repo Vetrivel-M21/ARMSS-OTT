@@ -1,0 +1,20 @@
+{
+  "identities": [
+    {
+      "name": "ottadmin",
+      "credentials": [
+        {
+          "accessKey": "ottadmin",
+          "secretKey": "SuperSecretMinioPassword2026"
+        }
+      ],
+      "actions": [
+        "Admin",
+        "Read",
+        "Write",
+        "List",
+        "Tagging"
+      ]
+    }
+  ]
+}

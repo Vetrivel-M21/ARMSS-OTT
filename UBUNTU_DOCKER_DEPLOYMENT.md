@@ -21,8 +21,8 @@ This guide walks you through deploying the complete **ARMSS-OTT** platform (Go B
 │      ┌──────────────────┼─────────────────────────┐                         │
 │      ▼                  ▼                         ▼                         │
 │   Path: /            Path: /api/               Path: /hls/                  │
-│   Frontend           Backend API               MinIO S3 Storage             │
-│   (Port 8091)        (Port 8090)               (Port 9000)                  │
+│   Frontend           Backend API               SeaweedFS S3 Storage         │
+│   (Port 8091)        (Port 8090)               (Port 8333)                  │
 │                         │                         ▲                         │
 │                         ├─────────► MySQL (3306)  │                         │
 │                         ├─────────► Redis (6379)  │                         │

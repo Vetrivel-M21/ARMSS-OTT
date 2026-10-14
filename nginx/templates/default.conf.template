@@ -15,7 +15,7 @@ upstream ott_backend {
 }
 
 upstream ott_storage {
-    server minio:9000;
+    server seaweedfs:8333;
     keepalive 32;
 }
 
