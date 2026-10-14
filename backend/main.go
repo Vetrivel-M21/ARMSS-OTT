@@ -93,8 +93,20 @@ func main() {
 		MaxAge:           300,
 	}))
 
+	// Top-level Health check
+	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"healthy","service":"armss-ott-backend"}`))
+	})
+
 	// 4. API Routes
 	r.Route("/api", func(r chi.Router) {
+		// Root API Status
+		r.Get("/", func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"status":"online","service":"armss-ott-backend","version":"1.0.0"}`))
+		})
+
 		// Health & Metrics
 		r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
