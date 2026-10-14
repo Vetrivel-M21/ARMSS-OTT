@@ -5,6 +5,8 @@ FROM node:22-alpine AS builder
 
 WORKDIR /app
 
+RUN apk add --no-cache libc6-compat
+
 # Accept build argument for API URL & Google Client ID
 ARG VITE_API_BASE_URL=http://localhost:8090/api
 ARG VITE_GOOGLE_CLIENT_ID=91550463965-0lmm9iu9h5fes5i3lh7qhme986s4va6u.apps.googleusercontent.com
@@ -14,7 +16,7 @@ ENV NITRO_PRESET=node-server
 
 # Install dependencies
 COPY package.json package-lock.json ./
-RUN npm ci
+RUN npm ci || npm install --legacy-peer-deps
 
 # Copy source files
 COPY . .
