@@ -95,24 +95,27 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // Brand Header
+                // Brand Header with 3D Aura Logo
                 Center(
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    decoration: BoxDecoration(
-                      gradient: AppColors.brandButtonGradient,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      'ARMSS OTT',
-                      style: AppTypography.heroTitle(fontSize: 22, fontWeight: FontWeight.w900).copyWith(
-                        letterSpacing: 2.0,
-                        color: Colors.white,
+                  child: Column(
+                    children: [
+                      Image.asset(
+                        'assets/images/logo.png',
+                        height: 72,
+                        fit: BoxFit.contain,
                       ),
-                    ),
+                      const SizedBox(height: 12),
+                      Text(
+                        'ARMSS OTT',
+                        style: AppTypography.heroTitle(fontSize: 24, fontWeight: FontWeight.w900).copyWith(
+                          letterSpacing: 2.0,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                const SizedBox(height: 36),
+                const SizedBox(height: 32),
 
                 Text(
                   'Sign In',

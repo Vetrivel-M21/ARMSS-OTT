@@ -126,7 +126,7 @@ function UploadButton({
 
 export const Route = createFileRoute("/admin")({ component: AdminPage });
 
-type Tab = "analytics" | "users" | "content" | "layout" | "broadcast";
+type Tab = "analytics" | "users" | "content" | "layout" | "broadcast" | "plans";
 
 function AdminPage() {
   const user = useAether((s) => s.user);
@@ -177,6 +177,7 @@ function AdminPage() {
           { id: "content", label: "Content", icon: Film },
           { id: "layout", label: "Layout & Visibility", icon: LayoutTemplate },
           { id: "broadcast", label: "Broadcast", icon: Bell },
+          { id: "plans", label: "Plans & Access", icon: Crown },
         ] as { id: Tab; label: string; icon: React.ElementType }[]).map((t) => (
           <button
             key={t.id}
@@ -201,6 +202,7 @@ function AdminPage() {
         {tab === "content" && <ContentTab />}
         {tab === "layout" && <DisplayLayoutTab />}
         {tab === "broadcast" && <BroadcastTab />}
+        {tab === "plans" && <PlansAccessTab />}
       </div>
     </div>
   );
@@ -3370,3 +3372,509 @@ function DisplayLayoutTab() {
     </div>
   );
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Plans & Content Access Management Tab
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface AdminPlanState {
+  id: string;
+  name: string;
+  price_inr: number;
+  billing_period: string;
+  daily_movie_limit: number;
+  daily_episode_limit: number;
+  max_quality: number;
+  max_devices: number;
+  razorpay_plan_id: string;
+  is_active: boolean;
+}
+
+function PlansAccessTab() {
+  const [plans, setPlans] = useState<AdminPlanState[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [editingPlan, setEditingPlan] = useState<AdminPlanState | null>(null);
+  const [savingPlan, setSavingPlan] = useState(false);
+
+  // Content series access config state
+  const [titles, setTitles] = useState<Title[]>([]);
+  const [seriesSearch, setSeriesSearch] = useState("");
+  const [seriesAccess, setSeriesAccess] = useState<Record<string, { tier: string; freeEps: number }>>({});
+  const [savingAccess, setSavingAccess] = useState<Record<string, boolean>>({});
+
+  const loadPlans = async () => {
+    setLoading(true);
+    try {
+      const data = await api.admin.getPlans();
+      if (data && data.length > 0) {
+        setPlans(data as AdminPlanState[]);
+      }
+    } catch {
+      toast.error("Failed loading subscription plans.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadTitles = async () => {
+    try {
+      const res = await api.admin.getTitles();
+      if (res && res.titles) {
+        setTitles(res.titles);
+        // Initialize access state from titles
+        const map: Record<string, { tier: string; freeEps: number }> = {};
+        for (const t of res.titles) {
+          map[t.id] = {
+            tier: t.required_tier || "free",
+            freeEps: (t as any).free_episodes ?? 0,
+          };
+        }
+        setSeriesAccess(map);
+      }
+    } catch {
+      // fallback to catalog
+      setTitles(TITLES);
+    }
+  };
+
+  useEffect(() => {
+    void loadPlans();
+    void loadTitles();
+  }, []);
+
+  const handleSavePlan = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingPlan) return;
+    setSavingPlan(true);
+    try {
+      const ok = await api.admin.updatePlan(editingPlan.id, editingPlan);
+      if (ok) {
+        toast.success(`Plan "${editingPlan.name}" updated successfully!`);
+        setEditingPlan(null);
+        await loadPlans();
+      } else {
+        toast.error("Failed updating plan.");
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Failed updating plan.");
+    } finally {
+      setSavingPlan(false);
+    }
+  };
+
+  const handleSaveTitleAccess = async (titleId: string) => {
+    const config = seriesAccess[titleId];
+    if (!config) return;
+    setSavingAccess((prev) => ({ ...prev, [titleId]: true }));
+    try {
+      const ok = await api.admin.updateTitleAccess(titleId, {
+        required_tier: config.tier,
+        free_episodes: config.freeEps,
+      });
+      if (ok) {
+        toast.success("Content access updated successfully!");
+      } else {
+        toast.error("Failed updating content access.");
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Failed updating content access.");
+    } finally {
+      setSavingAccess((prev) => ({ ...prev, [titleId]: false }));
+    }
+  };
+
+  const filteredTitles = titles.filter(
+    (t) =>
+      t.title.toLowerCase().includes(seriesSearch.toLowerCase()) ||
+      t.kind.toLowerCase().includes(seriesSearch.toLowerCase())
+  );
+
+  return (
+    <div className="space-y-12">
+      {/* ── Section 1: Subscription Plans ── */}
+      <div>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <h2 className="text-xl font-display font-semibold text-fg flex items-center gap-2">
+              <Crown className="size-5 text-accent" />
+              Subscription Plans & Quotas
+            </h2>
+            <p className="text-sm text-muted mt-1">
+              Configure daily movie/episode quotas, max playback resolution, and device limits per tier.
+            </p>
+          </div>
+          <Button
+            type="button"
+            variant="line"
+            size="sm"
+            onClick={loadPlans}
+            disabled={loading}
+            className="self-start sm:self-auto flex items-center gap-1.5"
+          >
+            <RefreshCw className={cn("size-3.5", loading && "animate-spin")} />
+            Refresh Plans
+          </Button>
+        </div>
+
+        {loading ? (
+          <div className="mt-6 flex h-48 items-center justify-center rounded-xl bg-surface border border-border">
+            <RefreshCw className="size-6 text-muted animate-spin" />
+          </div>
+        ) : (
+          <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-6">
+            {plans.map((p) => (
+              <div
+                key={p.id}
+                className={cn(
+                  "relative flex flex-col justify-between rounded-2xl p-6 border transition-all",
+                  p.id === "premium"
+                    ? "bg-gradient-to-b from-accent/10 via-surface to-surface border-accent/40 shadow-lg"
+                    : "bg-surface border-border hover:border-border-subtle"
+                )}
+              >
+                <div>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs font-semibold tracking-wider uppercase text-accent">
+                      {p.id.toUpperCase()}
+                    </span>
+                    <span
+                      className={cn(
+                        "px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider",
+                        p.is_active
+                          ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30"
+                          : "bg-red-500/15 text-red-400 border border-red-500/30"
+                      )}
+                    >
+                      {p.is_active ? "Active" : "Disabled"}
+                    </span>
+                  </div>
+
+                  <h3 className="mt-2 text-lg font-bold text-fg">{p.name}</h3>
+                  <div className="mt-1 flex items-baseline gap-1">
+                    <span className="text-3xl font-extrabold text-fg">₹{p.price_inr}</span>
+                    <span className="text-xs text-muted">/{p.billing_period}</span>
+                  </div>
+
+                  <div className="mt-6 space-y-3 text-xs text-muted">
+                    <div className="flex justify-between pb-2 border-b border-border/50">
+                      <span>Daily Movie Limit:</span>
+                      <strong className="text-fg">{p.daily_movie_limit} movies / day</strong>
+                    </div>
+                    <div className="flex justify-between pb-2 border-b border-border/50">
+                      <span>Daily Episode Limit:</span>
+                      <strong className="text-fg">{p.daily_episode_limit} episodes / day</strong>
+                    </div>
+                    <div className="flex justify-between pb-2 border-b border-border/50">
+                      <span>Max Resolution:</span>
+                      <strong className="text-fg">{p.max_quality}p</strong>
+                    </div>
+                    <div className="flex justify-between pb-2 border-b border-border/50">
+                      <span>Device Limit:</span>
+                      <strong className="text-fg">{p.max_devices} devices</strong>
+                    </div>
+                    <div className="flex justify-between pb-2 border-b border-border/50">
+                      <span>Razorpay Plan ID:</span>
+                      <strong className="text-fg truncate max-w-[140px]" title={p.razorpay_plan_id || "None"}>
+                        {p.razorpay_plan_id || "—"}
+                      </strong>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-6 pt-4 border-t border-border/60">
+                  <Button
+                    type="button"
+                    variant="line"
+                    size="sm"
+                    onClick={() => setEditingPlan({ ...p })}
+                    className="w-full flex items-center justify-center gap-1.5 text-xs font-semibold"
+                  >
+                    <Pencil className="size-3.5" />
+                    Edit Plan Settings
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* ── Edit Plan Modal ── */}
+      {editingPlan && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+          <div className="w-full max-w-lg rounded-2xl bg-surface-elevated border border-border p-6 shadow-2xl">
+            <div className="flex items-center justify-between pb-4 border-b border-border">
+              <h3 className="text-base font-bold text-fg flex items-center gap-2">
+                <Crown className="size-4 text-accent" />
+                Edit Plan: {editingPlan.id.toUpperCase()}
+              </h3>
+              <button
+                type="button"
+                onClick={() => setEditingPlan(null)}
+                className="text-muted hover:text-fg transition-colors"
+              >
+                <X className="size-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSavePlan} className="mt-4 space-y-4">
+              <div>
+                <label className="text-xs font-medium text-muted block mb-1">Display Name</label>
+                <input
+                  type="text"
+                  value={editingPlan.name}
+                  onChange={(e) => setEditingPlan({ ...editingPlan, name: e.target.value })}
+                  required
+                  className="w-full rounded-lg bg-surface border border-border px-3 py-2 text-sm text-fg focus:border-accent focus:outline-none"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-xs font-medium text-muted block mb-1">Price (₹ INR)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={editingPlan.price_inr}
+                    onChange={(e) => setEditingPlan({ ...editingPlan, price_inr: parseInt(e.target.value) || 0 })}
+                    className="w-full rounded-lg bg-surface border border-border px-3 py-2 text-sm text-fg focus:border-accent focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-muted block mb-1">Billing Period</label>
+                  <select
+                    value={editingPlan.billing_period}
+                    onChange={(e) => setEditingPlan({ ...editingPlan, billing_period: e.target.value })}
+                    className="w-full rounded-lg bg-surface border border-border px-3 py-2 text-sm text-fg focus:border-accent focus:outline-none"
+                  >
+                    <option value="monthly">Monthly</option>
+                    <option value="quarterly">Quarterly</option>
+                    <option value="annual">Annual</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-xs font-medium text-muted block mb-1">Daily Movie Limit</label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={editingPlan.daily_movie_limit}
+                    onChange={(e) => setEditingPlan({ ...editingPlan, daily_movie_limit: parseInt(e.target.value) || 1 })}
+                    required
+                    className="w-full rounded-lg bg-surface border border-border px-3 py-2 text-sm text-fg focus:border-accent focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-muted block mb-1">Daily Episode Limit</label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={editingPlan.daily_episode_limit}
+                    onChange={(e) => setEditingPlan({ ...editingPlan, daily_episode_limit: parseInt(e.target.value) || 1 })}
+                    required
+                    className="w-full rounded-lg bg-surface border border-border px-3 py-2 text-sm text-fg focus:border-accent focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-xs font-medium text-muted block mb-1">Max Quality</label>
+                  <select
+                    value={editingPlan.max_quality}
+                    onChange={(e) => setEditingPlan({ ...editingPlan, max_quality: parseInt(e.target.value) || 720 })}
+                    className="w-full rounded-lg bg-surface border border-border px-3 py-2 text-sm text-fg focus:border-accent focus:outline-none"
+                  >
+                    <option value={720}>720p HD</option>
+                    <option value={1080}>1080p Full HD</option>
+                    <option value={2160}>2160p 4K UHD</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-muted block mb-1">Max Devices</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="10"
+                    value={editingPlan.max_devices}
+                    onChange={(e) => setEditingPlan({ ...editingPlan, max_devices: parseInt(e.target.value) || 1 })}
+                    className="w-full rounded-lg bg-surface border border-border px-3 py-2 text-sm text-fg focus:border-accent focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-medium text-muted block mb-1">Razorpay Plan ID</label>
+                <input
+                  type="text"
+                  placeholder="plan_xxxxxxxxxxxxxx"
+                  value={editingPlan.razorpay_plan_id}
+                  onChange={(e) => setEditingPlan({ ...editingPlan, razorpay_plan_id: e.target.value })}
+                  className="w-full rounded-lg bg-surface border border-border px-3 py-2 text-sm text-fg focus:border-accent focus:outline-none font-mono text-xs"
+                />
+              </div>
+
+              <div className="flex items-center gap-2 pt-2">
+                <input
+                  type="checkbox"
+                  id="plan-active"
+                  checked={editingPlan.is_active}
+                  onChange={(e) => setEditingPlan({ ...editingPlan, is_active: e.target.checked })}
+                  className="rounded border-border accent-accent"
+                />
+                <label htmlFor="plan-active" className="text-xs font-medium text-fg cursor-pointer">
+                  Plan is Active (visible and purchasable)
+                </label>
+              </div>
+
+              <div className="mt-6 flex justify-end gap-3 pt-4 border-t border-border">
+                <Button type="button" variant="ghost" onClick={() => setEditingPlan(null)}>
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={savingPlan} className="flex items-center gap-1.5">
+                  {savingPlan ? <RefreshCw className="size-3.5 animate-spin" /> : <Check className="size-3.5" />}
+                  {savingPlan ? "Saving..." : "Save Changes"}
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── Section 2: Content Access & Free Episodes Boundary ── */}
+      <div className="pt-6 border-t border-border">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <h2 className="text-xl font-display font-semibold text-fg flex items-center gap-2">
+              <Film className="size-5 text-accent" />
+              Content Access & Free Episodes per Series
+            </h2>
+            <p className="text-sm text-muted mt-1">
+              Set content required tiers and configure how many episodes free users can watch for each series.
+            </p>
+          </div>
+
+          <div className="w-full sm:w-64">
+            <div className="relative">
+              <Search className="absolute left-3 top-2.5 size-4 text-muted" />
+              <input
+                type="text"
+                placeholder="Search titles..."
+                value={seriesSearch}
+                onChange={(e) => setSeriesSearch(e.target.value)}
+                className="w-full rounded-xl bg-surface border border-border pl-9 pr-3 py-2 text-xs text-fg placeholder:text-muted focus:border-accent focus:outline-none"
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-6 overflow-x-auto rounded-xl border border-border bg-surface">
+          <table className="w-full text-left text-xs">
+            <thead className="bg-surface-elevated border-b border-border text-muted">
+              <tr>
+                <th className="py-3 px-4 font-semibold">Title</th>
+                <th className="py-3 px-4 font-semibold">Kind</th>
+                <th className="py-3 px-4 font-semibold">Required Tier</th>
+                <th className="py-3 px-4 font-semibold">Free Episodes (for Series)</th>
+                <th className="py-3 px-4 font-semibold text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border/60">
+              {filteredTitles.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="py-8 text-center text-muted">
+                    No titles found matching your search.
+                  </td>
+                </tr>
+              ) : (
+                filteredTitles.map((t) => {
+                  const currentAccess = seriesAccess[t.id] || { tier: "free", freeEps: 0 };
+                  const isSaving = savingAccess[t.id];
+                  const isSeries = t.kind.toLowerCase() === "series";
+
+                  return (
+                    <tr key={t.id} className="hover:bg-surface-elevated/40 transition-colors">
+                      <td className="py-3 px-4">
+                        <div className="font-semibold text-fg">{t.title}</div>
+                        <div className="text-[10px] text-muted font-mono">{t.id}</div>
+                      </td>
+                      <td className="py-3 px-4">
+                        <span
+                          className={cn(
+                            "px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider",
+                            isSeries ? "bg-purple-500/15 text-purple-400" : "bg-blue-500/15 text-blue-400"
+                          )}
+                        >
+                          {t.kind}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4">
+                        <select
+                          value={currentAccess.tier}
+                          onChange={(e) =>
+                            setSeriesAccess((prev) => ({
+                              ...prev,
+                              [t.id]: { ...currentAccess, tier: e.target.value },
+                            }))
+                          }
+                          className="rounded-lg bg-surface border border-border px-2 py-1 text-xs text-fg focus:border-accent focus:outline-none"
+                        >
+                          <option value="free">Free (All users)</option>
+                          <option value="standard">Standard (₹99+)</option>
+                          <option value="premium">Premium (₹199+)</option>
+                        </select>
+                      </td>
+                      <td className="py-3 px-4">
+                        {isSeries ? (
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="number"
+                              min="0"
+                              max="100"
+                              value={currentAccess.freeEps}
+                              onChange={(e) =>
+                                setSeriesAccess((prev) => ({
+                                  ...prev,
+                                  [t.id]: {
+                                    ...currentAccess,
+                                    freeEps: parseInt(e.target.value) || 0,
+                                  },
+                                }))
+                              }
+                              className="w-16 rounded-lg bg-surface border border-border px-2 py-1 text-xs text-fg focus:border-accent focus:outline-none"
+                            />
+                            <span className="text-[11px] text-muted">
+                              {currentAccess.freeEps === 0
+                                ? "(None - requires tier)"
+                                : `Episodes 1..${currentAccess.freeEps} free`}
+                            </span>
+                          </div>
+                        ) : (
+                          <span className="text-muted text-[11px]">— (Movie)</span>
+                        )}
+                      </td>
+                      <td className="py-3 px-4 text-right">
+                        <Button
+                          type="button"
+                          size="sm"
+                          disabled={isSaving}
+                          onClick={() => handleSaveTitleAccess(t.id)}
+                          className="text-xs h-7 px-2.5"
+                        >
+                          {isSaving ? <RefreshCw className="size-3 animate-spin" /> : "Save"}
+                        </Button>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+

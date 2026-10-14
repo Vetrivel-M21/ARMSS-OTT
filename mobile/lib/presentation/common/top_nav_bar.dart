@@ -8,6 +8,7 @@ class TopNavBar extends StatelessWidget {
   final Function(String) onCategorySelected;
   final VoidCallback onProfileTap;
   final VoidCallback onSearchTap;
+  final List<String>? categories;
 
   const TopNavBar({
     super.key,
@@ -15,11 +16,12 @@ class TopNavBar extends StatelessWidget {
     required this.onCategorySelected,
     required this.onProfileTap,
     required this.onSearchTap,
+    this.categories,
   });
 
   @override
   Widget build(BuildContext context) {
-    final categories = ['All', 'Movies', 'Series', 'Live TV'];
+    final catList = categories ?? const ['All', 'Movies', 'Series', 'Live TV'];
 
     return ClipRect(
       child: BackdropFilter(
@@ -48,26 +50,31 @@ class TopNavBar extends StatelessWidget {
               child: Row(
                 children: [
                   // Brand Logo / Monogram
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: AppColors.primary,
-                      borderRadius: BorderRadius.circular(5),
-                    ),
-                    child: Text(
-                      'ARMSS',
-                      style: AppTypography.badge.copyWith(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 1.5,
+                  Image.asset(
+                    'assets/images/logo.png',
+                    height: 28,
+                    fit: BoxFit.contain,
+                    errorBuilder: (_, __, ___) => Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: AppColors.primary,
+                        borderRadius: BorderRadius.circular(5),
+                      ),
+                      child: Text(
+                        'ARMSS',
+                        style: AppTypography.badge.copyWith(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 1.5,
+                        ),
                       ),
                     ),
                   ),
                   const SizedBox(width: 8),
                   Text(
-                    'OTT',
+                    'ARMSS OTT',
                     style: AppTypography.heroTitle(fontSize: 16, fontWeight: FontWeight.w900).copyWith(
-                      color: AppColors.gold,
+                      color: Colors.white,
                       letterSpacing: 1.2,
                     ),
                   ),
@@ -120,7 +127,7 @@ class TopNavBar extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.only(left: 16, right: 16, bottom: 8),
               child: Row(
-                children: categories.map((cat) {
+                children: catList.map((cat) {
                   final isSelected = activeCategory == cat;
                   return Padding(
                     padding: const EdgeInsets.only(right: 8),

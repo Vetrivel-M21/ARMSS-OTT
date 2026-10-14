@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"armss-ott-backend/middleware"
@@ -22,7 +23,22 @@ var (
 	resolutionRegex = regexp.MustCompile(`RESOLUTION=(\d+)x(\d+)`)
 	mapUriRegex     = regexp.MustCompile(`URI="([^"]+)"`)
 	keyUriRegex     = regexp.MustCompile(`URI="([^"]+)"`)
+
+	masterCacheMu sync.RWMutex
+	masterCache   = make(map[string]masterParsedCache)
 )
+
+type masterParsedItem struct {
+	isRendition bool
+	streamInf   string
+	height      int
+	subUri      string
+	rawLine     string
+}
+
+type masterParsedCache struct {
+	items []masterParsedItem
+}
 
 // GeneratePlaybackToken generates a signed JWT token valid for 5 minutes.
 func GeneratePlaybackToken(userID, videoID, deviceID, clientType string, maxHeight int, lifetime time.Duration) (string, error) {
@@ -74,12 +90,11 @@ func ValidatePlaybackToken(tokenStr string) (*models.PlaybackTokenClaims, error)
 	return claims, nil
 }
 
-// RewriteMasterPlaylist filters out rungs exceeding maxHeight and rewrites sub-playlists with signed tokens.
-func RewriteMasterPlaylist(rawContent []byte, videoID, tokenStr string, maxHeight int, apiBaseURL string) string {
+func parseMasterContent(rawContent []byte) masterParsedCache {
 	scanner := bufio.NewScanner(bytes.NewReader(rawContent))
-	var outLines []string
-
-	var skipNextURI bool
+	var items []masterParsedItem
+	var pendingStreamInf string
+	var pendingHeight int
 
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
@@ -88,41 +103,96 @@ func RewriteMasterPlaylist(rawContent []byte, videoID, tokenStr string, maxHeigh
 		}
 
 		if strings.HasPrefix(line, "#EXT-X-STREAM-INF:") {
-			skipNextURI = false
-
-			// Check RESOLUTION=WxH
+			pendingStreamInf = line
+			pendingHeight = 0
 			matches := resolutionRegex.FindStringSubmatch(line)
 			if len(matches) == 3 {
-				height, err := strconv.Atoi(matches[2])
-				if err == nil && maxHeight > 0 && height > maxHeight {
-					// Exceeds allowed max height: skip this rendition
-					skipNextURI = true
-					continue
+				if h, err := strconv.Atoi(matches[2]); err == nil {
+					pendingHeight = h
 				}
 			}
-			outLines = append(outLines, line)
 			continue
 		}
 
-		if skipNextURI {
-			// Skip the URI line that belonged to the filtered-out rendition
-			skipNextURI = false
+		if pendingStreamInf != "" {
+			items = append(items, masterParsedItem{
+				isRendition: true,
+				streamInf:   pendingStreamInf,
+				height:      pendingHeight,
+				subUri:      line,
+			})
+			pendingStreamInf = ""
 			continue
 		}
 
-		// Check if line is a sub-playlist URI (ends with .m3u8 and not a tag)
-		if !strings.HasPrefix(line, "#") && strings.HasSuffix(line, ".m3u8") {
-			// Rewrite sub-playlist path
-			cleanBase := strings.TrimRight(apiBaseURL, "/")
-			rewrittenURI := fmt.Sprintf("%s/videos/%s/%s?token=%s", cleanBase, videoID, line, url.QueryEscape(tokenStr))
-			outLines = append(outLines, rewrittenURI)
-			continue
-		}
+		items = append(items, masterParsedItem{
+			isRendition: false,
+			rawLine:     line,
+		})
+	}
+	return masterParsedCache{items: items}
+}
 
-		outLines = append(outLines, line)
+func getOrParseMaster(videoID string, rawContent []byte) masterParsedCache {
+	if videoID != "" {
+		masterCacheMu.RLock()
+		cached, ok := masterCache[videoID]
+		masterCacheMu.RUnlock()
+		if ok {
+			return cached
+		}
 	}
 
-	return strings.Join(outLines, "\n") + "\n"
+	parsed := parseMasterContent(rawContent)
+	if videoID != "" {
+		masterCacheMu.Lock()
+		masterCache[videoID] = parsed
+		masterCacheMu.Unlock()
+	}
+	return parsed
+}
+
+// RewriteMasterPlaylist filters out rungs exceeding maxHeight and rewrites sub-playlists with signed tokens.
+// Uses in-memory parsed template caching for sub-millisecond response latency.
+func RewriteMasterPlaylist(rawContent []byte, videoID, tokenStr string, maxHeight int, apiBaseURL string) string {
+	parsed := getOrParseMaster(videoID, rawContent)
+	cleanBase := strings.TrimRight(apiBaseURL, "/")
+	escapedToken := url.QueryEscape(tokenStr)
+
+	var sb strings.Builder
+	sb.Grow(len(rawContent) + 256)
+
+	for _, item := range parsed.items {
+		if !item.isRendition {
+			sb.WriteString(item.rawLine)
+			sb.WriteByte('\n')
+			continue
+		}
+
+		if maxHeight > 0 && item.height > maxHeight {
+			continue
+		}
+
+		sb.WriteString(item.streamInf)
+		sb.WriteByte('\n')
+
+		// If subUri ends with .m3u8, rewrite with token
+		if !strings.HasPrefix(item.subUri, "#") && strings.HasSuffix(item.subUri, ".m3u8") {
+			sb.WriteString(cleanBase)
+			sb.WriteString("/videos/")
+			sb.WriteString(videoID)
+			sb.WriteByte('/')
+			sb.WriteString(item.subUri)
+			sb.WriteString("?token=")
+			sb.WriteString(escapedToken)
+			sb.WriteByte('\n')
+		} else {
+			sb.WriteString(item.subUri)
+			sb.WriteByte('\n')
+		}
+	}
+
+	return sb.String()
 }
 
 // RewriteRenditionPlaylist rewrites segment URIs and init.mp4 into 5-minute presigned S3 URLs.

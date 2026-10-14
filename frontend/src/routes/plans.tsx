@@ -4,6 +4,7 @@ import { Check, Crown, HelpCircle, Shield, Sparkles, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { api, type SubscriptionTier } from "@/lib/api";
+import { loadRazorpayScript } from "@/lib/razorpay";
 import { useAether } from "@/lib/store";
 
 export const Route = createFileRoute("/plans")({ component: PlansPage });
@@ -37,13 +38,74 @@ function PlansPage() {
         setUser(res.user);
         toast.success("Switched to Free plan.");
       } else if (tier === "standard" || tier === "premium") {
-        const res = await api.upgradeTier(tier);
-        setUser(res.user);
-        toast.success(`Successfully activated ${tier === "premium" ? "Premium VIP 4K" : "Standard HD"}!`);
+        // 1. Create Checkout on Go API backend
+        const checkout = await api.createSubscriptionCheckout(tier);
+
+        // 2. Load official Razorpay Checkout SDK
+        const scriptLoaded = await loadRazorpayScript();
+
+        // If in mock dev mode or Razorpay script fails to load, gracefully fall back
+        if (!scriptLoaded || !window.Razorpay || checkout.key_id === "rzp_test_mock_key") {
+          const res = await api.upgradeTier(tier);
+          setUser(res.user);
+          toast.success(
+            `Successfully activated ${tier === "premium" ? "Premium VIP 4K" : "Standard HD"}! (Dev Mode)`
+          );
+          return;
+        }
+
+        // 3. Open official Razorpay Checkout Modal
+        const rzp = new window.Razorpay({
+          key: checkout.key_id,
+          amount: checkout.amount_inr * 100,
+          currency: checkout.currency || "INR",
+          name: "ARMSS-OTT",
+          description: `${checkout.plan_name} Subscription`,
+          subscription_id:
+            checkout.subscription_id?.startsWith("sub_") && !checkout.subscription_id.startsWith("sub_mock")
+              ? checkout.subscription_id
+              : undefined,
+          order_id: checkout.order_id || undefined,
+          prefill: {
+            name: user.name || checkout.user_name,
+            email: user.email || checkout.user_email,
+          },
+          theme: {
+            color: "#e50914",
+          },
+          modal: {
+            ondismiss: () => {
+              toast.info("Payment checkout dismissed");
+              setLoadingTier(null);
+            },
+          },
+          handler: async (response) => {
+            try {
+              toast.loading("Verifying payment...", { id: "rzp-verify" });
+              const verifyRes = await api.verifySubscriptionPayment({
+                plan_id: tier,
+                razorpay_payment_id: response.razorpay_payment_id,
+                razorpay_subscription_id: response.razorpay_subscription_id,
+                razorpay_order_id: response.razorpay_order_id,
+                razorpay_signature: response.razorpay_signature,
+              });
+              setUser(verifyRes.user);
+              toast.success(
+                `Payment verified! Welcome to ${tier === "premium" ? "Premium VIP 4K" : "Standard HD"}!`,
+                { id: "rzp-verify" }
+              );
+            } catch (verErr: any) {
+              toast.error(verErr.message || "Payment verification failed", { id: "rzp-verify" });
+            } finally {
+              setLoadingTier(null);
+            }
+          },
+        });
+
+        rzp.open();
       }
     } catch (err: any) {
       toast.error(err.message || "Could not update your plan. Please try again.");
-    } finally {
       setLoadingTier(null);
     }
   };
@@ -57,6 +119,7 @@ function PlansPage() {
       period: "forever, no card needed",
       resolution: "720p HD",
       devices: "1 screen at a time",
+      dailyLimit: "1 movie & 2 episodes / day",
       adFree: false,
       downloads: false,
       originals: false,
@@ -70,6 +133,7 @@ function PlansPage() {
       period: annual ? "per month (billed annually)" : "per month",
       resolution: "1080p Full HD",
       devices: "2 screens simultaneously",
+      dailyLimit: "5 movies & 10 episodes / day",
       adFree: true,
       downloads: false,
       originals: true,
@@ -83,6 +147,7 @@ function PlansPage() {
       period: annual ? "per month (billed annually)" : "per month",
       resolution: "4K Ultra HD + HDR10",
       devices: "4 screens simultaneously",
+      dailyLimit: "Unlimited movies & episodes",
       adFree: true,
       downloads: true,
       originals: true,
@@ -173,6 +238,10 @@ function PlansPage() {
 
                 {/* Features list */}
                 <ul className="mt-6 space-y-3.5 text-xs text-fg/90">
+                  <li className="flex items-center gap-2.5">
+                    <Check className="size-4 shrink-0 text-match" />
+                    <span>Daily Watch Quota: <strong>{p.dailyLimit}</strong></span>
+                  </li>
                   <li className="flex items-center gap-2.5">
                     <Check className="size-4 shrink-0 text-match" />
                     <span>Resolution: <strong>{p.resolution}</strong></span>

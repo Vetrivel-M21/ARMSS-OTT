@@ -283,6 +283,9 @@ func runMigrations(driver string) {
 	} else {
 		_, _ = DB.Exec("ALTER TABLE titles ADD COLUMN video_url TEXT")
 	}
+
+	// Additive plan-based access control migrations
+	runPlanAccessMigrations(driver)
 }
 
 func addColumnIfNotExists(db *sql.DB, tableName, columnName, columnDef string) {

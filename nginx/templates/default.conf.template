@@ -1,0 +1,128 @@
+# ----------------------------------------------------
+# ARMSS-OTT Production Nginx Reverse Proxy Configuration
+# Supports dynamic ${DOMAIN} substitution via docker-entrypoint envsubst
+# ----------------------------------------------------
+
+# Upstream definitions for internal Docker network
+upstream ott_frontend {
+    server frontend:8091;
+    keepalive 32;
+}
+
+upstream ott_backend {
+    server backend:8090;
+    keepalive 32;
+}
+
+upstream ott_storage {
+    server minio:9000;
+    keepalive 32;
+}
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name ${DOMAIN} localhost;
+
+    # Certbot ACME HTTP-01 Challenge Directory
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+        allow all;
+    }
+
+    # Enable large payloads for 4K video uploads and master files
+    client_max_body_size 4096M;
+    client_body_buffer_size 128k;
+
+    # Gzip Compression for web assets and JSON API
+    gzip on;
+    gzip_vary on;
+    gzip_proxied any;
+    gzip_comp_level 6;
+    gzip_types text/plain text/css text/xml application/json application/javascript application/xml+rss application/atom+xml image/svg+xml;
+
+    # 1. API Handlers & Real-Time Endpoints
+    location /api/ {
+        proxy_pass http://ott_backend/api/;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 600s;
+        proxy_send_timeout 600s;
+        proxy_connect_timeout 60s;
+        proxy_buffering off;
+    }
+
+    # 2. Uploads Directory (Posters, Backdrops, Avatars)
+    location /uploads/ {
+        proxy_pass http://ott_backend/uploads/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        add_header Cache-Control "public, max-age=604800, immutable";
+    }
+
+    # 3. HLS Adaptive Bitrate (CMAF / fMP4) Video Storage
+    location /hls/ {
+        proxy_pass http://ott_storage/hls/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # Comprehensive CORS headers for Web (hls.js) and Mobile (ExoPlayer/AVPlayer)
+        add_header Access-Control-Allow-Origin * always;
+        add_header Access-Control-Allow-Methods "GET, HEAD, OPTIONS" always;
+        add_header Access-Control-Allow-Headers "Range, Origin, Accept, Content-Type, Authorization" always;
+        add_header Access-Control-Expose-Headers "Content-Length, Content-Range, Accept-Ranges" always;
+
+        if ($request_method = 'OPTIONS') {
+            add_header Access-Control-Allow-Origin * always;
+            add_header Access-Control-Allow-Methods "GET, HEAD, OPTIONS" always;
+            add_header Access-Control-Allow-Headers "Range, Origin, Accept, Content-Type, Authorization" always;
+            add_header Content-Length 0;
+            add_header Content-Type text/plain;
+            return 204;
+        }
+
+        # Cache immutable video segment chunks (4s fMP4 CMAF chunks)
+        location ~* \.(m4s|mp4|ts)$ {
+            proxy_pass http://ott_storage;
+            add_header Cache-Control "public, max-age=2592000, immutable" always;
+            add_header Access-Control-Allow-Origin * always;
+        }
+
+        # Dynamic playlists must never be cached
+        location ~* \.m3u8$ {
+            proxy_pass http://ott_storage;
+            add_header Cache-Control "no-cache, no-store, must-revalidate" always;
+            add_header Access-Control-Allow-Origin * always;
+        }
+    }
+
+    # 4. Frontend Web Application (React 19 + TanStack Start SSR)
+    location / {
+        proxy_pass http://ott_frontend;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 120s;
+    }
+
+    # Error pages
+    error_page 500 502 503 504 /50x.html;
+    location = /50x.html {
+        root /usr/share/nginx/html;
+    }
+}

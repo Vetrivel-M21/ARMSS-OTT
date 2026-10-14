@@ -3,6 +3,7 @@ import * as Dialog from "@radix-ui/react-dialog";
 import { Check, Crown, Download, Film, ShieldCheck, Sparkles, Tv, X } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
+import { loadRazorpayScript } from "@/lib/razorpay";
 import { useAether } from "@/lib/store";
 import { Button } from "./ui/button";
 
@@ -26,13 +27,73 @@ export function UpgradeModal() {
 
     setLoading(true);
     try {
-      const res = await api.upgradeTier(tier);
-      setUser(res.user);
-      toast.success(`Upgraded to ${tier === "premium" ? "Premium VIP 4K" : "Standard 1080p"}!`);
-      setOpen(false);
+      // 1. Initiate checkout with Go backend
+      const checkout = await api.createSubscriptionCheckout(tier);
+
+      // 2. Load official Razorpay Checkout SDK
+      const scriptLoaded = await loadRazorpayScript();
+
+      // Graceful fallback for mock test mode or script load issues
+      if (!scriptLoaded || !window.Razorpay || checkout.key_id === "rzp_test_mock_key") {
+        const res = await api.upgradeTier(tier);
+        setUser(res.user);
+        toast.success(`Upgraded to ${tier === "premium" ? "Premium VIP 4K" : "Standard 1080p"}! (Dev Mode)`);
+        setOpen(false);
+        return;
+      }
+
+      // 3. Open Razorpay Checkout Modal
+      const rzp = new window.Razorpay({
+        key: checkout.key_id,
+        amount: checkout.amount_inr * 100,
+        currency: checkout.currency || "INR",
+        name: "ARMSS-OTT",
+        description: `${checkout.plan_name} Upgrade`,
+        subscription_id:
+          checkout.subscription_id?.startsWith("sub_") && !checkout.subscription_id.startsWith("sub_mock")
+            ? checkout.subscription_id
+            : undefined,
+        order_id: checkout.order_id || undefined,
+        prefill: {
+          name: user.name || checkout.user_name,
+          email: user.email || checkout.user_email,
+        },
+        theme: {
+          color: "#e50914",
+        },
+        modal: {
+          ondismiss: () => {
+            toast.info("Upgrade checkout dismissed");
+            setLoading(false);
+          },
+        },
+        handler: async (response) => {
+          try {
+            toast.loading("Verifying payment...", { id: "rzp-modal-verify" });
+            const verifyRes = await api.verifySubscriptionPayment({
+              plan_id: tier,
+              razorpay_payment_id: response.razorpay_payment_id,
+              razorpay_subscription_id: response.razorpay_subscription_id,
+              razorpay_order_id: response.razorpay_order_id,
+              razorpay_signature: response.razorpay_signature,
+            });
+            setUser(verifyRes.user);
+            toast.success(
+              `Payment verified! Upgraded to ${tier === "premium" ? "Premium VIP 4K" : "Standard 1080p"}!`,
+              { id: "rzp-modal-verify" }
+            );
+            setOpen(false);
+          } catch (verErr: any) {
+            toast.error(verErr.message || "Payment verification failed", { id: "rzp-modal-verify" });
+          } finally {
+            setLoading(false);
+          }
+        },
+      });
+
+      rzp.open();
     } catch (err: any) {
-      toast.error(err.message || "Upgrade failed");
-    } finally {
+      toast.error(err.message || "Upgrade checkout failed");
       setLoading(false);
     }
   };

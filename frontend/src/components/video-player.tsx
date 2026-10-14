@@ -105,7 +105,8 @@ export function VideoPlayer({
   // Controls UI visibility
   const [showControls, setShowControls] = useState(true);
   const controlsTimeoutRef = useRef<number | null>(null);
-  const [activeMenu, setActiveMenu] = useState<"quality" | "speed" | null>(null);
+  const [activeMenu, setActiveMenu] = useState<"quality" | "speed" | "display" | null>(null);
+  const [displayMode, setDisplayMode] = useState<"fit" | "fill" | "stretch">("fit");
 
   // Store device ID locally
   useEffect(() => {
@@ -170,7 +171,7 @@ export function VideoPlayer({
 
         // Ensure full manifest URL (prepending origin if relative)
         if (manifestUrl.startsWith("/")) {
-          const apiHost = (import.meta.env.VITE_API_BASE_URL || "http://localhost:8081/api").replace(/\/api\/?$/, "");
+          const apiHost = (import.meta.env.VITE_API_BASE_URL || "http://localhost:8090/api").replace(/\/api\/?$/, "");
           manifestUrl = `${apiHost}${manifestUrl}`;
         }
 
@@ -198,7 +199,7 @@ export function VideoPlayer({
             if (fallbackUrl && manifestUrl !== fallbackUrl) {
               let fbUrl = fallbackUrl;
               if (fbUrl.startsWith("/")) {
-                const apiHost = (import.meta.env.VITE_API_BASE_URL || "http://localhost:8081/api").replace(/\/api\/?$/, "");
+                const apiHost = (import.meta.env.VITE_API_BASE_URL || "http://localhost:8090/api").replace(/\/api\/?$/, "");
                 fbUrl = `${apiHost}${fbUrl}`;
               }
               video.src = fbUrl;
@@ -214,12 +215,13 @@ export function VideoPlayer({
         if (Hls.isSupported()) {
           const hlsConfig: Partial<HlsConfig> = {
             capLevelToPlayerSize: true, // Cap rung to player display size
-            startLevel: -1, // Start on optimal ABR level
-            maxBufferLength: 30, // 30s forward buffer
-            maxMaxBufferLength: 60, // 60s max forward buffer
-            maxBufferSize: 60 * 1000 * 1000, // 60MB max buffer
-            backBufferLength: 30, // 30s rewind buffer
+            startLevel: 0, // Fast start: download lowest rung for sub-300ms instant first frame
+            maxBufferLength: 20, // 20s forward buffer
+            maxMaxBufferLength: 40, // 40s max forward buffer
+            maxBufferSize: 30 * 1000 * 1000, // 30MB max buffer (lightweight memory)
+            backBufferLength: 15, // 15s rewind buffer
             enableWorker: true,
+            progressive: true, // Progressive CMAF fMP4 chunk decoding
             lowLatencyMode: false,
             xhrSetup: (xhr) => {
               xhr.withCredentials = false;
@@ -237,11 +239,8 @@ export function VideoPlayer({
             setLevels(data.levels);
             setIsLoading(false);
 
-            // Start mid-level if multiple levels are available
-            if (data.levels.length > 2 && hls.startLevel === -1) {
-              const mid = Math.floor(data.levels.length / 2);
-              hls.nextLevel = mid;
-            }
+            // Fast-start: start on level 0, then immediately let ABR step up smoothly
+            hls.currentLevel = -1;
 
             // Resume playback position
             if (initialSeek > 0) {
@@ -273,7 +272,7 @@ export function VideoPlayer({
                 .then((freshTicket) => {
                   let freshUrl = freshTicket.manifestUrl;
                   if (freshUrl.startsWith("/")) {
-                    const apiHost = (import.meta.env.VITE_API_BASE_URL || "http://localhost:8081/api").replace(/\/api\/?$/, "");
+                    const apiHost = (import.meta.env.VITE_API_BASE_URL || "http://localhost:8090/api").replace(/\/api\/?$/, "");
                     freshUrl = `${apiHost}${freshUrl}`;
                   }
                   hls.loadSource(freshUrl);
@@ -567,7 +566,12 @@ export function VideoPlayer({
         ref={videoRef}
         playsInline
         onClick={togglePlay}
-        className="w-full h-full object-contain cursor-pointer"
+        className={cn(
+          "w-full h-full cursor-pointer transition-all duration-200",
+          displayMode === "fit" && "object-contain",
+          displayMode === "fill" && "object-cover",
+          displayMode === "stretch" && "object-fill",
+        )}
       />
 
       {/* Buffering & Initial Loading Spinner */}
@@ -815,6 +819,49 @@ export function VideoPlayer({
                     >
                       <span>{s === 1 ? "Normal (1.0x)" : `${s}x`}</span>
                       {speed === s && <Check className="w-3.5 h-3.5" />}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Display Mode Selector (Fit / Fill / Stretch) */}
+            <div className="relative">
+              <button
+                onClick={() => setActiveMenu(activeMenu === "display" ? null : "display")}
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-white/10 hover:bg-white/20 text-xs font-medium transition-colors cursor-pointer capitalize"
+                title="Screen Display Mode"
+              >
+                <span>{displayMode}</span>
+              </button>
+
+              {activeMenu === "display" && (
+                <div className="absolute bottom-full right-0 mb-3 w-44 bg-zinc-900/95 border border-white/10 rounded-lg shadow-xl backdrop-blur-md p-1.5 z-50 text-xs">
+                  <div className="px-2 py-1 text-zinc-400 font-semibold uppercase text-[10px] tracking-wider border-b border-white/5 mb-1">
+                    Display Mode
+                  </div>
+                  {[
+                    { id: "fit" as const, label: "Fit (Original)", desc: "Preserve aspect ratio" },
+                    { id: "fill" as const, label: "Fill (Zoom)", desc: "Crop to fill screen" },
+                    { id: "stretch" as const, label: "Stretch", desc: "Stretch to boundaries" },
+                  ].map((m) => (
+                    <button
+                      key={m.id}
+                      onClick={() => {
+                        setDisplayMode(m.id);
+                        setActiveMenu(null);
+                        resetControlsTimer();
+                      }}
+                      className={cn(
+                        "w-full flex items-center justify-between px-2.5 py-1.5 rounded hover:bg-white/10 text-left cursor-pointer transition-colors",
+                        displayMode === m.id && "text-red-500 font-semibold",
+                      )}
+                    >
+                      <div>
+                        <div>{m.label}</div>
+                        <div className="text-[10px] text-zinc-400">{m.desc}</div>
+                      </div>
+                      {displayMode === m.id && <Check className="w-3.5 h-3.5 shrink-0" />}
                     </button>
                   ))}
                 </div>

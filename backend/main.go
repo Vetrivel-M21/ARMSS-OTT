@@ -86,6 +86,7 @@ func main() {
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins:   []string{"https://*", "http://*"},
 		AllowOriginFunc:  func(r *http.Request, origin string) bool { return true },
+		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"},
 		AllowedHeaders:   []string{"*"},
 		ExposedHeaders:   []string{"*"},
 		AllowCredentials: true,
@@ -115,8 +116,10 @@ func main() {
 		// Public Profiles & Fallback
 		r.With(middleware.OptionalAuth).Get("/profiles", handlers.GetProfiles)
 
-		// Public Subscription Plans
+		// Public Subscription Plans & Razorpay Webhook
 		r.Get("/subscription/plans", handlers.GetPlans)
+		r.Get("/plans", handlers.PublicListPlans)
+		r.Post("/webhooks/razorpay", handlers.HandleRazorpayWebhook)
 
 		// Public Catalog
 		r.Get("/titles", handlers.ListTitles)
@@ -140,6 +143,8 @@ func main() {
 
 			// Subscription actions
 			r.Post("/subscription/upgrade", handlers.UpgradeSubscription)
+			r.Post("/subscription/checkout", handlers.CreateSubscriptionCheckout)
+			r.Post("/subscription/verify", handlers.VerifySubscriptionPayment)
 			r.Post("/subscription/cancel", handlers.CancelSubscription)
 
 			// Cloud Sync
@@ -186,6 +191,12 @@ func main() {
 			r.Post("/admin/upload", handlers.AdminUpload)
 			r.Put("/admin/settings/layout", handlers.AdminUpdateLayoutSettings)
 			r.Delete("/admin/settings/layout", handlers.AdminResetLayoutSettings)
+
+			// Plan-based Access Control Management
+			r.Get("/admin/plans", handlers.AdminListPlans)
+			r.Put("/admin/plans/{id}", handlers.AdminUpdatePlan)
+			r.Get("/admin/titles/{id}/access", handlers.AdminGetTitleAccess)
+			r.Put("/admin/titles/{id}/access", handlers.AdminUpdateTitleAccess)
 
 			// Video Ingest & Transcoding Pipeline
 			r.Post("/admin/videos", handlers.AdminCreateVideo)

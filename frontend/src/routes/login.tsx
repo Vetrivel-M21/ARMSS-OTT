@@ -57,6 +57,7 @@ function LoginPage() {
   const navigate = useNavigate();
   const user = useAether((s) => s.user);
   const authChecked = useAether((s) => s.authChecked);
+  const setAuthChecked = useAether((s) => s.setAuthChecked);
   const setUser = useAether((s) => s.setUser);
 
   const [mode, setMode] = useState<"login" | "register" | "forgot">("login");
@@ -104,6 +105,7 @@ function LoginPage() {
 
   const handleFinishAuth = (userData: any, successMsg: string) => {
     setUser(userData);
+    setAuthChecked(true);
     toast.success(successMsg);
     const target = redirect || "/";
     void navigate({ to: target as any });
@@ -138,15 +140,23 @@ function LoginPage() {
     setError(null);
 
     if (mode === "login") {
-      if (!identifier.trim()) {
+      const cleanIdentifier = identifier.trim();
+      if (!cleanIdentifier) {
         setError("Please enter your email address or username.");
         return;
       }
+      if (!password) {
+        setError("Please enter your password.");
+        return;
+      }
       setLoading(true);
+      console.log("[ARMSS-OTT] Submitting login request for:", cleanIdentifier);
       try {
-        const res = await api.login(identifier.trim(), password);
+        const res = await api.login(cleanIdentifier, password);
+        console.log("[ARMSS-OTT] Login successful:", res.user);
         handleFinishAuth(res.user, `Welcome back, ${res.user.name}!`);
       } catch (err: any) {
+        console.error("[ARMSS-OTT] Login failed:", err);
         setError(err.message || "Authentication failed. Please check your credentials.");
       } finally {
         setLoading(false);
@@ -258,8 +268,13 @@ function LoginPage() {
 
           {/* Brand Header */}
           <div className="relative z-10">
-            <Link to="/" className="inline-block group">
-              <span className="font-display italic text-3xl sm:text-4xl tracking-tight text-fg group-hover:text-accent transition-colors">
+            <Link to="/" className="inline-flex items-center gap-3 group">
+              <img
+                src="/logo.png"
+                alt="ARMSS OTT Logo"
+                className="size-10 sm:size-12 object-contain drop-shadow-[0_4px_16px_rgba(255,80,30,0.4)] transition-transform duration-300 group-hover:scale-105"
+              />
+              <span className="font-display italic text-3xl sm:text-4xl tracking-tight text-fg group-hover:text-accent transition-colors flex items-center">
                 ARMSS<span className="not-italic text-xs sm:text-sm ml-1.5 px-2 py-0.5 rounded bg-accent text-accent-fg font-bold tracking-wider">OTT</span>
               </span>
             </Link>
@@ -387,7 +402,16 @@ function LoginPage() {
 
           {/* Standard Login / Register Form */}
           {mode !== "forgot" && (
-            <form onSubmit={handleSubmit} className="space-y-3.5">
+            <form
+              action="javascript:void(0)"
+              method="dialog"
+              onSubmit={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                void handleSubmit(e);
+              }}
+              className="space-y-3.5"
+            >
               {mode === "register" ? (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-3.5">
                   {/* Name */}
@@ -490,6 +514,12 @@ function LoginPage() {
                         required
                         value={identifier}
                         onChange={(e) => setIdentifier(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            void handleSubmit(e);
+                          }
+                        }}
                         placeholder="name@example.com or username"
                         className="w-full rounded-lg bg-elevated pl-9 pr-3 py-2 text-sm text-fg placeholder:text-muted/50 border border-white/10 focus:outline-none focus:border-accent"
                       />
@@ -519,6 +549,12 @@ function LoginPage() {
                         required
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            void handleSubmit(e);
+                          }
+                        }}
                         placeholder="••••••••"
                         className="w-full rounded-lg bg-elevated pl-9 pr-10 py-2 text-sm text-fg placeholder:text-muted/50 border border-white/10 focus:outline-none focus:border-accent"
                       />
@@ -538,10 +574,14 @@ function LoginPage() {
               <Button
                 type="submit"
                 disabled={loading || googleLoading}
-                className="w-full font-semibold h-10 mt-2"
+                onClick={(e) => {
+                  e.preventDefault();
+                  void handleSubmit(e);
+                }}
+                className="w-full font-semibold h-10 mt-2 cursor-pointer"
               >
                 {loading
-                  ? "Processing..."
+                  ? "Signing in..."
                   : mode === "login"
                   ? "Sign In & Stream"
                   : "Create Account"}
@@ -553,7 +593,7 @@ function LoginPage() {
           {mode === "forgot" && (
             <div className="space-y-3.5">
               {!otpSent ? (
-                <form onSubmit={handleRequestOtp} className="space-y-3.5">
+                <form action="#" onSubmit={handleRequestOtp} className="space-y-3.5">
                   <div>
                     <label className="block text-xs font-medium text-muted mb-1">
                       Email address or Username
@@ -583,7 +623,7 @@ function LoginPage() {
                   </Button>
                 </form>
               ) : (
-                <form onSubmit={handleVerifyOtpAndReset} className="space-y-3.5">
+                <form action="#" onSubmit={handleVerifyOtpAndReset} className="space-y-3.5">
                   <div className="rounded-lg bg-accent/10 border border-accent/25 p-2.5 flex items-start gap-2.5">
                     <CheckCircle2 className="size-4 text-accent shrink-0 mt-0.5" />
                     <div className="text-xs text-fg leading-relaxed">

@@ -60,6 +60,7 @@ class ApiConstants {
   static const String search = '/search';
   static const String subscriptionPlans = '/subscription/plans';
   static const String subscriptionCheckout = '/subscription/checkout';
+  static const String settingsLayout = '/settings/layout';
 
   // Video Playback & ABR Endpoints
   static String videoPlayback(String id) => '/videos/$id/playback';

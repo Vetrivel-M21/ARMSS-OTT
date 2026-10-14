@@ -116,7 +116,7 @@ export function PlayerView({
           (title as any).requiredTier === "free" ||
           (!title.required_tier && !(title as any).requiredTier);
 
-        if (!isFree && (ticket.allowed === false || ticket.error === "tier_upgrade_required")) {
+        if (ticket && ticket.allowed === false) {
           setPlaybackAllowed(false);
           setPlaying(false);
           setTicketMessage(ticket.message || "Upgrade your subscription to watch this exclusive title in full quality.");

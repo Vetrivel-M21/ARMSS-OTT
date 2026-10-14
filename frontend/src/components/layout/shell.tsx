@@ -19,15 +19,8 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const isLoginPage = pathname === "/login";
   const cinema = pathname.startsWith("/watch");
 
-  // Public routes viewable by guest / unauthenticated users
-  const isPublicRoute =
-    pathname === "/" ||
-    pathname.startsWith("/browse") ||
-    pathname === "/plans" ||
-    pathname === "/coming-soon" ||
-    pathname.startsWith("/title") ||
-    pathname === "/search";
-  const requiresAuth = !isPublicRoute && !isLoginPage;
+  // Only the login page is accessible without being logged in
+  const requiresAuth = !isLoginPage;
 
   // Synchronous token verification check
   const hasToken = typeof window !== "undefined" ? Boolean(getToken()) : false;
@@ -74,9 +67,9 @@ export function Shell({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  // Authentication Guard: Only redirect when accessing protected routes
+  // Authentication Guard: Redirect whenever not authenticated
   useEffect(() => {
-    if (!requiresAuth) return;
+    if (isLoginPage) return;
 
     // If client has confirmed no token or session check finished with no user
     if ((!hasToken && !boot) || (authChecked && !user)) {
@@ -85,7 +78,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
         search: pathname !== "/" ? ({ redirect: pathname } as any) : undefined,
       });
     }
-  }, [requiresAuth, boot, authChecked, user, hasToken, pathname, navigate]);
+  }, [isLoginPage, boot, authChecked, user, hasToken, pathname, navigate]);
 
   // 1. If currently on login page, render clean login view directly
   if (isLoginPage) {
@@ -96,8 +89,8 @@ export function Shell({ children }: { children: React.ReactNode }) {
     );
   }
 
-  // 2. Initial Boot Screen: Block content while verifying session for protected routes
-  if ((boot || !authChecked) && requiresAuth) {
+  // 2. Initial Boot Screen: Block content while verifying session
+  if (boot || !authChecked) {
     return (
       <div className="grid min-h-svh place-items-center bg-bg">
         <div className="stagger-in flex flex-col items-center gap-3">
@@ -111,8 +104,8 @@ export function Shell({ children }: { children: React.ReactNode }) {
     );
   }
 
-  // 3. If unauthenticated on a protected route, block content while redirecting to /login
-  if (!isAuthenticated && requiresAuth) {
+  // 3. If unauthenticated, block content while redirecting to /login
+  if (!isAuthenticated) {
     return (
       <div className="grid min-h-svh place-items-center bg-bg">
         <div className="stagger-in flex flex-col items-center gap-3">

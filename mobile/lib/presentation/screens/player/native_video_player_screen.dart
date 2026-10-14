@@ -8,6 +8,7 @@ import 'package:go_router/go_router.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:video_player/video_player.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
+import 'package:dio/dio.dart';
 
 import '../../../core/constants/api_constants.dart';
 import '../../../core/storage/storage_service.dart';
@@ -18,6 +19,16 @@ import '../../../data/models/title_model.dart';
 import '../../../data/models/episode_model.dart';
 import '../../../data/repositories/playback_repository.dart';
 import '../../../providers/catalog_provider.dart';
+
+enum VideoDisplayMode {
+  fit('Fit', 'Original aspect ratio with letterbox bars'),
+  fill('Fill', 'Zoom to fill entire screen without black bars'),
+  stretch('Stretch', 'Stretch edge-to-edge to fill full display');
+
+  final String label;
+  final String description;
+  const VideoDisplayMode(this.label, this.description);
+}
 
 class NativeVideoPlayerScreen extends ConsumerStatefulWidget {
   final String titleId;
@@ -43,6 +54,7 @@ class _NativeVideoPlayerScreenState extends ConsumerState<NativeVideoPlayerScree
 
   PlaybackTicket? _playbackTicket;
   String _selectedQuality = 'Auto';
+  VideoDisplayMode _displayMode = VideoDisplayMode.fit;
   Duration _lastPosition = Duration.zero;
 
   String? _currentEpisodeId;
@@ -120,6 +132,22 @@ class _NativeVideoPlayerScreenState extends ConsumerState<NativeVideoPlayerScree
 
       await _initializeStream(targetUrl: ticket.autoUrl, startAt: initialPosition);
     } catch (err) {
+      // Catch plan quota and access restrictions (403 from backend)
+      if (err is DioException && err.response?.statusCode == 403) {
+        final data = err.response?.data;
+        String userFriendlyMsg = 'Upgrade your plan to continue watching.';
+        if (data is Map<String, dynamic> && data['message'] != null) {
+          userFriendlyMsg = data['message'].toString();
+        }
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+            _errorMessage = userFriendlyMsg;
+          });
+        }
+        return;
+      }
+
       // Fallback: Check if episode or title has videoUrl / trailer
       final fallbackUrl = await _resolveFallbackStream();
       if (fallbackUrl != null && fallbackUrl.isNotEmpty) {
@@ -244,6 +272,14 @@ class _NativeVideoPlayerScreenState extends ConsumerState<NativeVideoPlayerScree
               },
               iconData: Icons.hd_outlined,
               title: 'Streaming Quality ($_selectedQuality)',
+            ),
+            OptionItem(
+              onTap: (ctx) {
+                Navigator.pop(ctx);
+                _showDisplayModeSheet();
+              },
+              iconData: Icons.aspect_ratio_rounded,
+              title: 'Display Mode (${_displayMode.label})',
             ),
             if (isSeries)
               OptionItem(
@@ -458,6 +494,104 @@ class _NativeVideoPlayerScreenState extends ConsumerState<NativeVideoPlayerScree
     );
   }
 
+  void _showDisplayModeSheet() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppColors.surfaceElevated,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) {
+        final screenHeight = MediaQuery.of(ctx).size.height;
+        final isLandscape = MediaQuery.of(ctx).orientation == Orientation.landscape;
+
+        return Container(
+          constraints: BoxConstraints(
+            maxHeight: isLandscape ? screenHeight * 0.90 : screenHeight * 0.60,
+          ),
+          decoration: const BoxDecoration(
+            color: AppColors.surfaceElevated,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+          ),
+          child: SafeArea(
+            top: false,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  margin: const EdgeInsets.only(top: 8, bottom: 4),
+                  width: 36,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.white24,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.aspect_ratio_rounded, color: AppColors.primary, size: 20),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Video Display Mode',
+                        style: AppTypography.cardTitle.copyWith(fontSize: 16),
+                      ),
+                      const Spacer(),
+                      IconButton(
+                        icon: const Icon(Icons.close_rounded, color: Colors.white70, size: 20),
+                        onPressed: () => Navigator.pop(ctx),
+                      ),
+                    ],
+                  ),
+                ),
+                const Divider(color: Colors.white12, height: 1),
+                Flexible(
+                  child: ListView(
+                    shrinkWrap: true,
+                    children: VideoDisplayMode.values.map((mode) {
+                      final isSelected = _displayMode == mode;
+                      return ListTile(
+                        dense: isLandscape,
+                        leading: Icon(
+                          isSelected ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
+                          color: isSelected ? AppColors.primary : Colors.white38,
+                          size: 20,
+                        ),
+                        title: Text(
+                          mode.label,
+                          style: TextStyle(
+                            color: isSelected ? Colors.white : Colors.white70,
+                            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                            fontSize: isLandscape ? 13 : 14,
+                          ),
+                        ),
+                        subtitle: Text(
+                          mode.description,
+                          style: TextStyle(
+                            color: Colors.white54,
+                            fontSize: isLandscape ? 11 : 12,
+                          ),
+                        ),
+                        onTap: () {
+                          Navigator.pop(ctx);
+                          setState(() {
+                            _displayMode = mode;
+                          });
+                        },
+                      );
+                    }).toList(),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   void _showEpisodesSheet(TitleModel title) {
     showModalBottomSheet(
       context: context,
@@ -641,43 +775,99 @@ class _NativeVideoPlayerScreenState extends ConsumerState<NativeVideoPlayerScree
   }
 
   Widget _buildErrorWidget(String? customMessage) {
+    final msg = customMessage ?? _errorMessage ?? 'Unable to connect to the video server.';
+    final isUpgradeReq = msg.toLowerCase().contains('upgrade') ||
+        msg.toLowerCase().contains('plan') ||
+        msg.toLowerCase().contains('subscription') ||
+        msg.toLowerCase().contains('tier');
+
     return Center(
       child: Container(
         padding: const EdgeInsets.all(24),
         margin: const EdgeInsets.symmetric(horizontal: 24),
         decoration: BoxDecoration(
-          color: Colors.black87,
+          color: Colors.black.withOpacity(0.92),
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Colors.white12),
+          border: Border.all(color: isUpgradeReq ? AppColors.gold.withOpacity(0.5) : Colors.white12),
+          boxShadow: [
+            if (isUpgradeReq)
+              BoxShadow(
+                color: AppColors.gold.withOpacity(0.15),
+                blurRadius: 20,
+                spreadRadius: 2,
+              ),
+          ],
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.error_outline_rounded, color: AppColors.primary, size: 48),
+            Icon(
+              isUpgradeReq ? Icons.workspace_premium_rounded : Icons.error_outline_rounded,
+              color: isUpgradeReq ? AppColors.gold : AppColors.primary,
+              size: 48,
+            ),
             const SizedBox(height: 12),
             Text(
-              'Playback Error',
-              style: AppTypography.cardTitle.copyWith(fontSize: 18),
+              isUpgradeReq ? 'VIP Subscription Required' : 'Playback Error',
+              style: AppTypography.cardTitle.copyWith(
+                fontSize: 18,
+                color: isUpgradeReq ? AppColors.gold : Colors.white,
+              ),
             ),
             const SizedBox(height: 8),
             Text(
-              customMessage ?? _errorMessage ?? 'Unable to connect to the video server.',
+              msg,
               style: AppTypography.bodySmall.copyWith(color: AppColors.textMuted),
               textAlign: TextAlign.center,
             ),
+            if (isUpgradeReq) ...[
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppColors.surfaceElevated,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: AppColors.border),
+                ),
+                child: Text(
+                  'To upgrade your plan, please visit armss-ott.com from your web browser, sign in, and activate your VIP subscription.',
+                  style: AppTypography.bodySmall.copyWith(color: Colors.white70, fontSize: 11),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            ],
             const SizedBox(height: 20),
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                ElevatedButton.icon(
-                  onPressed: () => _loadPlaybackTicket(isRenewal: true),
-                  icon: const Icon(Icons.refresh_rounded, size: 18),
-                  label: const Text('Retry'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primary,
-                    foregroundColor: Colors.white,
+                if (isUpgradeReq)
+                  ElevatedButton.icon(
+                    onPressed: () {
+                      Clipboard.setData(const ClipboardData(text: 'https://armss-ott.com/plans'));
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Website link copied: https://armss-ott.com/plans'),
+                          backgroundColor: AppColors.surfaceElevated,
+                        ),
+                      );
+                    },
+                    icon: const Icon(Icons.copy_rounded, size: 16),
+                    label: const Text('Copy Website Link'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primary,
+                      foregroundColor: Colors.white,
+                    ),
+                  )
+                else
+                  ElevatedButton.icon(
+                    onPressed: () => _loadPlaybackTicket(isRenewal: true),
+                    icon: const Icon(Icons.refresh_rounded, size: 18),
+                    label: const Text('Retry'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primary,
+                      foregroundColor: Colors.white,
+                    ),
                   ),
-                ),
                 const SizedBox(width: 12),
                 OutlinedButton(
                   onPressed: () => context.pop(),
@@ -693,6 +883,50 @@ class _NativeVideoPlayerScreenState extends ConsumerState<NativeVideoPlayerScree
         ),
       ),
     );
+  }
+
+  Widget _buildVideoPlayerSurface() {
+    if (_chewieController == null ||
+        _videoPlayerController == null ||
+        !_videoPlayerController!.value.isInitialized) {
+      return const SizedBox.shrink();
+    }
+
+    final videoSize = _videoPlayerController!.value.size;
+    final videoAspect = _videoPlayerController!.value.aspectRatio;
+
+    switch (_displayMode) {
+      case VideoDisplayMode.fit:
+        return Center(
+          child: AspectRatio(
+            aspectRatio: videoAspect > 0 ? videoAspect : 16 / 9,
+            child: Chewie(controller: _chewieController!),
+          ),
+        );
+      case VideoDisplayMode.fill:
+        return SizedBox.expand(
+          child: FittedBox(
+            fit: BoxFit.cover,
+            clipBehavior: Clip.hardEdge,
+            child: SizedBox(
+              width: videoSize.width > 0 ? videoSize.width : 1920,
+              height: videoSize.height > 0 ? videoSize.height : 1080,
+              child: Chewie(controller: _chewieController!),
+            ),
+          ),
+        );
+      case VideoDisplayMode.stretch:
+        return SizedBox.expand(
+          child: FittedBox(
+            fit: BoxFit.fill,
+            child: SizedBox(
+              width: videoSize.width > 0 ? videoSize.width : 1920,
+              height: videoSize.height > 0 ? videoSize.height : 1080,
+              child: Chewie(controller: _chewieController!),
+            ),
+          ),
+        );
+    }
   }
 
   @override
@@ -738,13 +972,8 @@ class _NativeVideoPlayerScreenState extends ConsumerState<NativeVideoPlayerScree
         bottom: false,
         child: Stack(
           children: [
-            // Chewie Video Player Surface
-            if (_chewieController != null &&
-                _videoPlayerController != null &&
-                _videoPlayerController!.value.isInitialized)
-              Center(
-                child: Chewie(controller: _chewieController!),
-              ),
+            // Responsive Video Player Surface with Fit, Fill & Stretch modes
+            _buildVideoPlayerSurface(),
 
             // Top Bar Overlay (Back Button & Title & Next Episode)
             Positioned(
@@ -856,6 +1085,30 @@ class _NativeVideoPlayerScreenState extends ConsumerState<NativeVideoPlayerScree
                             const SizedBox(width: 4),
                             Text(
                               _selectedQuality,
+                              style: AppTypography.badge.copyWith(fontSize: 11, color: Colors.white),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    // Quick Display Mode Badge (Fit / Fill / Stretch)
+                    GestureDetector(
+                      onTap: _showDisplayModeSheet,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                        decoration: BoxDecoration(
+                          color: Colors.white10,
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: Colors.white24),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.aspect_ratio_rounded, color: Colors.white70, size: 14),
+                            const SizedBox(width: 4),
+                            Text(
+                              _displayMode.label,
                               style: AppTypography.badge.copyWith(fontSize: 11, color: Colors.white),
                             ),
                           ],

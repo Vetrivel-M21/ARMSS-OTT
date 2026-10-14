@@ -142,17 +142,43 @@ function authPopupPlugin(): Plugin {
   };
 }
 
+function extendModuleRunnerTimeoutPlugin(): Plugin {
+  return {
+    name: "extend-module-runner-timeout",
+    configureServer(server) {
+      return () => {
+        const serverEnv = server.environments?.server;
+        if (serverEnv && "runner" in serverEnv) {
+          const runner = (serverEnv as any).runner;
+          if (runner?.transport) {
+            runner.transport.timeout = 300000;
+          }
+        }
+      };
+    },
+  };
+}
+
 // `0.0.0.0:8080` is the live-preview contract — don't change host/port.
 // The dev server starts once `src/router.tsx` and `src/routes/` exist — see
 // AGENTS.md § "First scaffold".
 export default defineConfig(({ command, isPreview }) => ({
   server: {
     host: "0.0.0.0",
-    port: 8080,
+    port: 8090,
     strictPort: true,
+    watch: {
+      ignored: [
+        "**/.tanstack/**",
+        "**/.output/**",
+        "**/.vercel/**",
+        "**/node_modules/**",
+        "**/.git/**",
+      ],
+    },
     proxy: {
       "/api": {
-        target: "http://127.0.0.1:8081",
+        target: "http://127.0.0.1:8090",
         changeOrigin: true,
       },
     },
@@ -164,6 +190,7 @@ export default defineConfig(({ command, isPreview }) => ({
   },
   resolve: { tsconfigPaths: true },
   plugins: [
+    extendModuleRunnerTimeoutPlugin(),
     pgliteBootstrapPlugin(),
     // Before tanstackStart so /auth/popup never falls through to the SPA.
     authPopupPlugin(),

@@ -46,6 +46,26 @@ export interface PlaybackTicketResponse {
   manifest_url?: string;
 }
 
+export interface SubscriptionCheckoutResponse {
+  subscription_id: string;
+  order_id?: string;
+  key_id: string;
+  plan_id: string;
+  plan_name: string;
+  amount_inr: number;
+  currency: string;
+  user_email: string;
+  user_name: string;
+}
+
+export interface VerifySubscriptionRequest {
+  plan_id: string;
+  razorpay_payment_id: string;
+  razorpay_subscription_id?: string;
+  razorpay_order_id?: string;
+  razorpay_signature: string;
+}
+
 export interface AnalyticsOverview {
   total_users: number;
   free_count: number;
@@ -179,13 +199,17 @@ export type SiteDisplaySettings = {
 };
 
 function getApiBase(): string {
-  if (typeof import.meta !== "undefined" && import.meta.env?.VITE_API_BASE_URL) {
-    return import.meta.env.VITE_API_BASE_URL;
-  }
+  // In the browser, always use relative "/api" so requests go to the same origin
+  // and are proxied by Vite in dev (or nginx in prod), preventing CORS or host mismatches.
   if (typeof window !== "undefined") {
+    const custom = import.meta?.env?.VITE_API_BASE_URL;
+    if (custom && custom.startsWith("/")) {
+      return custom;
+    }
     return "/api";
   }
-  return "http://127.0.0.1:8081/api";
+  // In SSR (Node.js runtime), use loopback URL to the backend
+  return process.env.INTERNAL_API_URL || "http://127.0.0.1:8090/api";
 }
 
 const API_BASE = getApiBase();
@@ -360,6 +384,32 @@ export const api = {
     return data;
   },
 
+  async createSubscriptionCheckout(plan_id: "standard" | "premium"): Promise<SubscriptionCheckoutResponse> {
+    const res = await fetchWithAuth("/subscription/checkout", {
+      method: "POST",
+      body: JSON.stringify({ plan_id }),
+    });
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.error || "Failed to initiate subscription checkout");
+    }
+    return res.json();
+  },
+
+  async verifySubscriptionPayment(payload: VerifySubscriptionRequest): Promise<{ user: User; token: string }> {
+    const res = await fetchWithAuth("/subscription/verify", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.error || "Payment verification failed");
+    }
+    const data = await res.json();
+    if (data.token) setToken(data.token);
+    return data;
+  },
+
   // Playback Entitlement Ticket
   async checkPlaybackTicket(titleId: string): Promise<PlaybackTicketResponse> {
     try {
@@ -367,11 +417,11 @@ export const api = {
         method: "POST",
       });
       const data = await res.json().catch(() => ({}));
-      if (res.status === 403 && data.error === "tier_upgrade_required") {
+      if (!res.ok && res.status === 403) {
         return {
           allowed: false,
-          error: "tier_upgrade_required",
-          message: data.message || "Upgrade your subscription to watch this exclusive title in full quality.",
+          error: data.error || "tier_upgrade_required",
+          message: data.message || "Upgrade your subscription to continue watching.",
           required_tier: data.required_tier,
         };
       }
@@ -854,7 +904,86 @@ export const api = {
         return false;
       }
     },
+
+    async getPlans(): Promise<AdminPlan[]> {
+      try {
+        const res = await fetchWithAuth("/admin/plans");
+        if (!res.ok) return [];
+        const data = await res.json();
+        return data.plans || [];
+      } catch {
+        return [];
+      }
+    },
+
+    async updatePlan(id: string, plan: Partial<AdminPlan>): Promise<boolean> {
+      try {
+        const res = await fetchWithAuth(`/admin/plans/${id}`, {
+          method: "PUT",
+          body: JSON.stringify(plan),
+        });
+        return res.ok;
+      } catch {
+        return false;
+      }
+    },
+
+    async getTitleAccess(id: string): Promise<TitleAccessInfo | null> {
+      try {
+        const res = await fetchWithAuth(`/admin/titles/${id}/access`);
+        if (!res.ok) return null;
+        return await res.json();
+      } catch {
+        return null;
+      }
+    },
+
+    async updateTitleAccess(id: string, access: { required_tier: string; free_episodes: number }): Promise<boolean> {
+      try {
+        const res = await fetchWithAuth(`/admin/titles/${id}/access`, {
+          method: "PUT",
+          body: JSON.stringify(access),
+        });
+        return res.ok;
+      } catch {
+        return false;
+      }
+    },
+  },
+
+  async getPublicPlans(): Promise<AdminPlan[]> {
+    try {
+      const res = await fetch(`${API_BASE}/plans`);
+      if (!res.ok) return [];
+      const data = await res.json();
+      return data.plans || [];
+    } catch {
+      return [];
+    }
   },
 };
+
+export interface AdminPlan {
+  id: string;
+  name: string;
+  price_inr: number;
+  billing_period: string;
+  daily_movie_limit: number;
+  daily_episode_limit: number;
+  max_quality: number;
+  max_devices: number;
+  razorpay_plan_id: string;
+  is_active: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface TitleAccessInfo {
+  id: string;
+  title: string;
+  kind: string;
+  required_tier: string;
+  free_episodes: number;
+}
 
 

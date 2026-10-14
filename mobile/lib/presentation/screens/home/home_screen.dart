@@ -7,6 +7,7 @@ import '../../../core/constants/api_constants.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../../data/models/title_model.dart';
+import '../../../data/models/display_settings_model.dart';
 import '../../../providers/catalog_provider.dart';
 import '../../../providers/watchlist_provider.dart';
 import '../../common/content_rail.dart';
@@ -86,6 +87,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final titlesAsync = ref.watch(titlesProvider);
+    final navVisAsync = ref.watch(navVisibilityProvider);
+    final navVisibility = navVisAsync.value ?? const NavVisibilityModel();
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -97,14 +100,34 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           child: Text('Failed to load catalog: $err', style: AppTypography.body),
         ),
         data: (allTitles) {
+          // Dynamic category list based on Admin site layout visibility settings
+          final availableCategories = [
+            'All',
+            if (navVisibility.films) 'Movies',
+            if (navVisibility.series) 'Series',
+            if (navVisibility.live) 'Live TV',
+          ];
+
+          final effectiveCategory = availableCategories.contains(_selectedCategory)
+              ? _selectedCategory
+              : 'All';
+
+          // Exclude any title whose whole category is hidden by Admin settings
+          final allowedTitles = allTitles.where((t) {
+            if (!navVisibility.films && t.kind == 'film') return false;
+            if (!navVisibility.series && t.kind == 'series') return false;
+            if (!navVisibility.live && t.kind == 'live') return false;
+            return true;
+          }).toList();
+
           // Filter by category if selected
-          List<TitleModel> displayed = allTitles;
-          if (_selectedCategory == 'Movies') {
-            displayed = allTitles.where((t) => t.kind == 'film').toList();
-          } else if (_selectedCategory == 'Series') {
-            displayed = allTitles.where((t) => t.kind == 'series').toList();
-          } else if (_selectedCategory == 'Live TV') {
-            displayed = allTitles.where((t) => t.kind == 'live').toList();
+          List<TitleModel> displayed = allowedTitles;
+          if (effectiveCategory == 'Movies') {
+            displayed = allowedTitles.where((t) => t.kind == 'film').toList();
+          } else if (effectiveCategory == 'Series') {
+            displayed = allowedTitles.where((t) => t.kind == 'series').toList();
+          } else if (effectiveCategory == 'Live TV') {
+            displayed = allowedTitles.where((t) => t.kind == 'live').toList();
           }
 
           final featuredList = displayed.where((t) => t.featured).take(5).toList();
@@ -113,7 +136,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           final top10List = displayed.where((t) => t.rank != null).toList()
             ..sort((a, b) => (a.rank ?? 99).compareTo(b.rank ?? 99));
           final originalsList = displayed.where((t) => t.original).toList();
-          final liveList = allTitles.where((t) => t.kind == 'live').toList();
+          final liveList = navVisibility.live
+              ? allowedTitles.where((t) => t.kind == 'live').toList()
+              : <TitleModel>[];
 
           // Mock continue watching items
           final continueWatching = displayed.take(2).toList();
@@ -267,11 +292,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                         ),
 
                       // Binge-Worthy TV Series
-                      if (allTitles.any((t) => t.kind == 'series'))
+                      if (navVisibility.series && allowedTitles.any((t) => t.kind == 'series'))
                         ContentRail(
                           title: 'Binge-Worthy TV Series',
                           subtitle: 'Award-winning Tamil originals',
-                          items: allTitles.where((t) => t.kind == 'series').toList(),
+                          items: allowedTitles.where((t) => t.kind == 'series').toList(),
                           onTitleTap: _onTitleTap,
                         ),
 
@@ -284,7 +309,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                         ),
 
                       // Live Channels
-                      if (liveList.isNotEmpty)
+                      if (navVisibility.live && liveList.isNotEmpty)
                         ContentRail(
                           title: '24/7 Live Broadcasts',
                           subtitle: 'Real-time channels and news',
@@ -306,7 +331,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 left: 0,
                 right: 0,
                 child: TopNavBar(
-                  activeCategory: _selectedCategory,
+                  activeCategory: effectiveCategory,
+                  categories: availableCategories,
                   onCategorySelected: (cat) {
                     setState(() => _selectedCategory = cat);
                   },

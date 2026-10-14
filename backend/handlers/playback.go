@@ -14,6 +14,7 @@ import (
 	"armss-ott-backend/database"
 	"armss-ott-backend/middleware"
 	"armss-ott-backend/models"
+	"armss-ott-backend/services/access"
 	"armss-ott-backend/services/metrics"
 	"armss-ott-backend/services/playback"
 	"armss-ott-backend/services/storage"
@@ -129,6 +130,28 @@ func GetPlaybackTicket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// 2b. Additive Plan-Based Access Control Check
+	var planMaxQuality int
+	if access.IsPlanAccessEnabled() {
+		authRes, authErr := access.AuthorizePlayback(r.Context(), database.DB, claims.UserID, videoID, clientType)
+		if authErr != nil {
+			log.Printf("[AuthorizePlayback] Error authorizing playback: %v", authErr)
+		} else if !authRes.Allowed {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusForbidden)
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"error":         authRes.Reason,
+				"message":       authRes.Message,
+				"plan":          authRes.Plan,
+				"watched_today": authRes.WatchedTodayCount,
+				"daily_limit":   authRes.DailyLimit,
+			})
+			return
+		} else if authRes.MaxQuality > 0 {
+			planMaxQuality = authRes.MaxQuality
+		}
+	}
+
 	// 3. Device Registration Check (Max 5 devices per user)
 	now := time.Now()
 	var registeredDeviceID string
@@ -215,6 +238,9 @@ func GetPlaybackTicket(w http.ResponseWriter, r *http.Request) {
 		} else {
 			maxHeight = 720
 		}
+	}
+	if planMaxQuality > 0 && planMaxQuality < maxHeight {
+		maxHeight = planMaxQuality
 	}
 
 	// 6. Resume Position

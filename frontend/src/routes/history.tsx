@@ -25,7 +25,7 @@ export const Route = createFileRoute("/history")({ component: HistoryPage });
 
 type FilterType = "all" | "film" | "series" | "in-progress" | "completed";
 
-export function HistoryPage() {
+function HistoryPage() {
   const navigate = useNavigate();
   const user = useAether((s) => s.user);
   const profile = useAether((s) => s.activeProfile) ?? "arjun";

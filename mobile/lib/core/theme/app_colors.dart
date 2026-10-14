@@ -19,6 +19,7 @@ class AppColors {
   // Status & Badges
   static const Color liveRed = Color(0xFFEF4444);
   static const Color matchGreen = Color(0xFF22C55E);
+  static const Color success = matchGreen;
   static const Color infoBlue = Color(0xFF38BDF8);
   static const Color warning = Color(0xFFF97316);
 

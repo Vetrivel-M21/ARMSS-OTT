@@ -33,12 +33,12 @@ COPY --from=builder /app/armss-ott-backend /app/armss-ott-backend
 # Create directory for uploads and database persistence
 RUN mkdir -p /app/public/uploads /app/data
 
-ENV PORT=8081 \
+ENV PORT=8090 \
     ENV=production \
     UPLOADS_DIR=/app/public/uploads \
     SQLITE_DB=/app/data/armss_ott.db
 
-EXPOSE 8081
+EXPOSE 8090
 
 VOLUME ["/app/public/uploads", "/app/data"]
 

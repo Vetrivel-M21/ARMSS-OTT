@@ -9,6 +9,7 @@ import (
 	"armss-ott-backend/database"
 	"armss-ott-backend/middleware"
 	"armss-ott-backend/models"
+	"armss-ott-backend/services/access"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 )
@@ -275,6 +276,24 @@ func CheckPlaybackTicket(w http.ResponseWriter, r *http.Request) {
 			"message":       "Upgrade your subscription to watch this exclusive title in full quality.",
 		})
 		return
+	}
+
+	// Additive Plan-Based Access Preflight Check
+	if access.IsPlanAccessEnabled() && claims != nil {
+		authRes, authErr := access.AuthorizePlayback(r.Context(), database.DB, claims.UserID, id, "web")
+		if authErr == nil && !authRes.Allowed {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusForbidden)
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"error":         authRes.Reason,
+				"title":         titleName,
+				"message":       authRes.Message,
+				"plan":          authRes.Plan,
+				"watched_today": authRes.WatchedTodayCount,
+				"daily_limit":   authRes.DailyLimit,
+			})
+			return
+		}
 	}
 
 	// Determine playback parameters based on tier

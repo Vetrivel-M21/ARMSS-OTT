@@ -1,5 +1,6 @@
 import '../models/title_model.dart';
 import '../models/episode_model.dart';
+import '../models/display_settings_model.dart';
 import '../../core/network/api_client.dart';
 import '../../core/constants/api_constants.dart';
 
@@ -26,6 +27,22 @@ class CatalogRepository {
 
     _cachedTitles = _getStaticTitles();
     return _cachedTitles!;
+  }
+
+  Future<NavVisibilityModel> getNavVisibility() async {
+    try {
+      final response = await apiClient.get(ApiConstants.settingsLayout);
+      if (response.statusCode == 200 && response.data != null) {
+        final data = response.data;
+        if (data is Map) {
+          final settings = data['settings'] is Map ? data['settings'] : data;
+          if (settings['navVisibility'] != null) {
+            return NavVisibilityModel.fromJson(Map<String, dynamic>.from(settings['navVisibility']));
+          }
+        }
+      }
+    } catch (_) {}
+    return const NavVisibilityModel();
   }
 
   Future<TitleModel?> getTitleById(String id) async {
