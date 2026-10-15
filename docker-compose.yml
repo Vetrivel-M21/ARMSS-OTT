@@ -39,7 +39,7 @@ services:
       MYSQL_DATABASE: armss_ott
     command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci"]
     volumes:
-      - mysql_data:/var/lib/mysql
+      - armss_ott_mysql_data:/var/lib/mysql
     networks:
       - armss_ott_network
     healthcheck:
@@ -58,7 +58,7 @@ services:
     container_name: armss_ott_redis
     restart: always
     volumes:
-      - redis_data:/data
+      - armss_ott_redis_data:/data
     networks:
       - armss_ott_network
     healthcheck:
@@ -77,7 +77,7 @@ services:
     restart: always
     command: "server -s3 -dir=/data -ip.bind=0.0.0.0 -s3.config=/etc/seaweedfs/s3.json"
     volumes:
-      - seaweedfs_data:/data
+      - armss_ott_seaweedfs_data:/data
       - ./seaweedfs/s3.json:/etc/seaweedfs/s3.json:ro
     networks:
       - armss_ott_network
@@ -112,12 +112,12 @@ services:
       - S3_HLS_BUCKET=hls
       - S3_PUBLIC_BASE_URL=${S3_PUBLIC_BASE_URL:-/hls}
       - ENABLE_WORKER=false
-      - UPLOADS_DIR=/app/public/uploads
+      - UPLOADS_DIR=/app/armss_ott_uploads
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-*}
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-91550463965-0lmm9iu9h5fes5i3lh7qhme986s4va6u.apps.googleusercontent.com}
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-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}
     volumes:
-      - backend_uploads:/app/public/uploads
+      - armss_ott_uploads_data:/app/armss_ott_uploads
     depends_on:
       mysql:
         condition: service_healthy
@@ -195,14 +195,14 @@ services:
       - armss_ott_network
 
 volumes:
-  mysql_data:
-    driver: local
-  redis_data:
-    driver: local
-  seaweedfs_data:
-    driver: local
-  backend_uploads:
-    driver: local
+  armss_ott_mysql_data:
+    name: armss_ott_mysql_data
+  armss_ott_redis_data:
+    name: armss_ott_redis_data
+  armss_ott_seaweedfs_data:
+    name: armss_ott_seaweedfs_data
+  armss_ott_uploads_data:
+    name: armss_ott_uploads_data
 
 networks:
   armss_ott_network:

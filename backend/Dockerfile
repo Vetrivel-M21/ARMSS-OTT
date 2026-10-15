@@ -1,6 +1,6 @@
 # ----------------------------------------------------
 # ARMSS-OTT High-Performance Go Backend Dockerfile
-# Using Debian Bookworm for 100% reliable network package downloads
+# Multi-stage build with static binaries for 100% reliability
 # ----------------------------------------------------
 FROM golang:1.26-bookworm AS builder
 
@@ -23,26 +23,23 @@ FROM debian:bookworm-slim
 
 WORKDIR /app
 
-# Install FFmpeg, CA certificates, and timezones from Debian's CDN
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates \
-    tzdata \
-    ffmpeg \
-    && rm -rf /var/lib/apt/lists/*
+# 1. Copy CA certificates & timezone data from builder (zero apt-get network calls)
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+COPY --from=builder /usr/share/zoneinfo /usr/share/zoneinfo
 
-# Copy binary from builder
+# 2. Copy static, self-contained FFmpeg & FFprobe (bypasses broken Debian CDN mirrors)
+COPY --from=mwader/static-ffmpeg:7.1 /ffmpeg /ffprobe /usr/local/bin/
+
+# 3. Copy Go backend binary from builder
 COPY --from=builder /app/armss-ott-backend /app/armss-ott-backend
 
-# Create directory for uploads and database persistence
-RUN mkdir -p /app/public/uploads /app/data
+# 4. Create dedicated, unique ARMSS-OTT uploads directory
+RUN mkdir -p /app/armss_ott_uploads
 
 ENV PORT=8090 \
     ENV=production \
-    UPLOADS_DIR=/app/public/uploads \
-    SQLITE_DB=/app/data/armss_ott.db
+    UPLOADS_DIR=/app/armss_ott_uploads
 
 EXPOSE 8090
-
-VOLUME ["/app/public/uploads", "/app/data"]
 
 CMD ["/app/armss-ott-backend"]
