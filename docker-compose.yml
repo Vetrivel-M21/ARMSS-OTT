@@ -126,11 +126,11 @@ services:
       seaweedfs:
         condition: service_started
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8090/health || exit 1"]
-      interval: 10s
+      test: ["CMD", "/app/armss-ott-backend", "-healthcheck"]
+      interval: 5s
       timeout: 5s
-      retries: 10
-      start_period: 20s
+      retries: 12
+      start_period: 15s
     networks:
       - armss_ott_network
 

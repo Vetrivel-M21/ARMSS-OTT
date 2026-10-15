@@ -22,6 +22,22 @@ import (
 )
 
 func main() {
+	// 0. Native Healthcheck Flag (used by Docker healthcheck with zero external dependencies)
+	for _, arg := range os.Args[1:] {
+		if arg == "-healthcheck" || arg == "--healthcheck" {
+			port := os.Getenv("PORT")
+			if port == "" {
+				port = "8090"
+			}
+			client := &http.Client{Timeout: 3 * time.Second}
+			resp, err := client.Get("http://127.0.0.1:" + port + "/health")
+			if err != nil || resp.StatusCode != http.StatusOK {
+				os.Exit(1)
+			}
+			os.Exit(0)
+		}
+	}
+
 	// Load .env file (silent — does not fail if file is missing)
 	_ = godotenv.Load()
 
