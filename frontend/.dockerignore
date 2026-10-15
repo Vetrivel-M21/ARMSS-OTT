@@ -5,3 +5,7 @@ node_modules
 dist
 .git
 .vercel
+# Exclude local dev env files — Docker compose injects env vars at runtime
+.env
+.env.development
+.env.local

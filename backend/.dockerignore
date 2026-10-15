@@ -1,5 +1,9 @@
 armss-ott-backend.exe
 armss-ott-backend
+server.exe
 data
 public/uploads
 .git
+# Exclude local .env files — Docker compose injects env vars at runtime
+.env
+.env.*

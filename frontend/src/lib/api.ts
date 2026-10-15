@@ -208,11 +208,14 @@ function getApiBase(): string {
     }
     return "/api";
   }
-  // In SSR (Node.js runtime), use loopback URL to the backend
-  return process.env.INTERNAL_API_URL || "http://127.0.0.1:8090/api";
+  // In SSR (Node.js runtime), read INTERNAL_API_URL at call-time (not module load-time)
+  // so Docker runtime env vars are used instead of being baked in as undefined at build time.
+  return process.env["INTERNAL_API_URL"] || "http://backend:8090/api";
 }
 
-const API_BASE = getApiBase();
+// NOTE: Do NOT cache as a module-level constant — SSR must read env at request time.
+// The function is lightweight enough to call per-request.
+const API_BASE = getApiBase;
 
 export function getToken(): string | null {
   if (typeof window === "undefined") return null;
@@ -239,14 +242,15 @@ async function fetchWithAuth(endpoint: string, options: RequestInit = {}) {
     headers.set("Authorization", `Bearer ${token}`);
   }
 
+  const base = API_BASE();
   try {
-    const res = await fetch(`${API_BASE}${endpoint}`, {
+    const res = await fetch(`${base}${endpoint}`, {
       ...options,
       headers,
     });
     return res;
   } catch (err) {
-    console.warn(`[ARMSS-OTT API] Failed to connect to ${API_BASE}${endpoint}:`, err);
+    console.warn(`[ARMSS-OTT API] Failed to connect to ${base}${endpoint}:`, err);
     throw err;
   }
 }
@@ -606,7 +610,7 @@ export const api = {
   // Display & Layout Settings (Public GET)
   async getSiteDisplaySettings(): Promise<SiteDisplaySettings | null> {
     try {
-      const res = await fetch(`${API_BASE}/settings/layout`);
+      const res = await fetch(`${API_BASE()}/settings/layout`);
       if (!res.ok) return null;
       const data = await res.json();
       return (data.settings as SiteDisplaySettings) || null;
@@ -618,7 +622,7 @@ export const api = {
   // Public Title & Episodes (GET)
   async getTitle(id: string): Promise<any | null> {
     try {
-      const res = await fetch(`${API_BASE}/titles/${id}`);
+      const res = await fetch(`${API_BASE()}/titles/${id}`);
       if (!res.ok) return null;
       return await res.json();
     } catch {
@@ -628,7 +632,7 @@ export const api = {
 
   async getEpisodes(titleId: string): Promise<any[]> {
     try {
-      const res = await fetch(`${API_BASE}/titles/${titleId}/episodes`);
+      const res = await fetch(`${API_BASE()}/titles/${titleId}/episodes`);
       if (!res.ok) return [];
       const data = await res.json();
       return data.episodes || [];
@@ -860,7 +864,7 @@ export const api = {
         const formData = new FormData();
         formData.append("file", file);
         const token = getToken();
-        const res = await fetch(`${API_BASE}/admin/upload`, {
+        const res = await fetch(`${API_BASE()}/admin/upload`, {
           method: "POST",
           headers: token ? { Authorization: `Bearer ${token}` } : {},
           body: formData,
@@ -953,7 +957,7 @@ export const api = {
 
   async getPublicPlans(): Promise<AdminPlan[]> {
     try {
-      const res = await fetch(`${API_BASE}/plans`);
+      const res = await fetch(`${API_BASE()}/plans`);
       if (!res.ok) return [];
       const data = await res.json();
       return data.plans || [];
