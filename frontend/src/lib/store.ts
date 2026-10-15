@@ -143,18 +143,7 @@ type AetherState = {
   fetchDisplaySettings: () => Promise<void>;
 };
 
-const seedContinue: ContinueItem[] = [
-  {
-    id: "vikram",
-    progress: 0.42,
-    updatedAt: Date.now() - 1000 * 60 * 50,
-  },
-  {
-    id: "master",
-    progress: 0.65,
-    updatedAt: Date.now() - 1000 * 60 * 60 * 18,
-  },
-];
+const seedContinue: ContinueItem[] = [];
 
 export const useAether = create<AetherState>()(
   persist(
@@ -165,11 +154,11 @@ export const useAether = create<AetherState>()(
       upgradeTargetTitle: null,
       activeProfile: null,
       myList: {
-        arjun: ["vikram", "master"],
+        arjun: [],
         kids: [],
       },
       continueWatching: {
-        arjun: seedContinue,
+        arjun: [],
         kids: [],
       },
       downloads: { arjun: [], kids: [] },
@@ -358,9 +347,24 @@ export const useAether = create<AetherState>()(
       fetchCatalog: async () => {
         try {
           const titles = await api.getTitles();
-          if (titles && titles.length > 0) {
+          if (Array.isArray(titles)) {
             syncBackendTitles(titles);
-            set((s) => ({ catalogVersion: s.catalogVersion + 1 }));
+            const currentIds = new Set(titles.map((t: any) => t.id));
+            set((s) => {
+              const cleanedContinue: ContinueMap = { ...s.continueWatching };
+              for (const p of Object.keys(cleanedContinue) as ProfileId[]) {
+                cleanedContinue[p] = (cleanedContinue[p] || []).filter((item) => currentIds.has(item.id));
+              }
+              const cleanedMyList: ListMap = { ...s.myList };
+              for (const p of Object.keys(cleanedMyList) as ProfileId[]) {
+                cleanedMyList[p] = (cleanedMyList[p] || []).filter((id) => currentIds.has(id));
+              }
+              return {
+                catalogVersion: s.catalogVersion + 1,
+                continueWatching: cleanedContinue,
+                myList: cleanedMyList,
+              };
+            });
           }
         } catch (err) {
           console.warn("[ARMSS-OTT] Failed syncing dynamic catalog from backend:", err);

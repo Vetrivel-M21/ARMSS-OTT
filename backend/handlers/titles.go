@@ -83,17 +83,6 @@ func ListTitles(w http.ResponseWriter, r *http.Request) {
 		if badgesStr != "" {
 			t.Badges = strings.Split(badgesStr, ",")
 		}
-		if t.ID == "vikram" {
-			t.Featured = true
-			t.Trending = true
-			r1 := 1
-			t.Rank = &r1
-		} else if t.ID == "master" {
-			t.Featured = true
-			t.Trending = true
-			r2 := 2
-			t.Rank = &r2
-		}
 		titles = append(titles, t)
 	}
 
@@ -154,18 +143,6 @@ func GetTitle(w http.ResponseWriter, r *http.Request) {
 	if badgesStr != "" {
 		t.Badges = strings.Split(badgesStr, ",")
 	}
-	if t.ID == "vikram" {
-		t.Featured = true
-		t.Trending = true
-		r1 := 1
-		t.Rank = &r1
-	} else if t.ID == "master" {
-		t.Featured = true
-		t.Trending = true
-		r2 := 2
-		t.Rank = &r2
-	}
-
 	// Fetch dynamic episodes if available
 	t.Episodes = []models.Episode{}
 	epRows, epErr := database.DB.Query(

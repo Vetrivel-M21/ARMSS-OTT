@@ -85,84 +85,84 @@ func SeedDatabase() {
 		_, _ = DB.Exec("UPDATE users SET password_hash = ?, is_admin = true WHERE email = ?", string(adminHash), "admin@armss.com")
 	}
 
-	// 2. Seed Full Tamil Catalog with sample video streams and metadata
-	titles := []struct {
-		ID           string
-		Title        string
-		Kind         string
-		Year         int
-		Maturity     string
-		RuntimeMin   int
-		MatchPercent int
-		Logline      string
-		Synopsis     string
-		Poster       string
-		Backdrop     string
-		Trailer      string
-		Tone         string
-		Original     bool
-		Kids         bool
-		Tier         models.SubscriptionTier
-		Genres       []string
-		Badges       []string
-	}{
-		{
-			ID:           "vikram",
-			Title:        "Vikram",
-			Kind:         "film",
-			Year:         2022,
-			Maturity:     "A",
-			RuntimeMin:   174,
-			MatchPercent: 99,
-			Logline:      "A special agent is sent to investigate a series of masked killings and uncovers a drug cartel conspiracy.",
-			Synopsis:     "Kamal Haasan stars as agent Vikram in Lokesh Kanagaraj's blockbuster action universe thriller.",
-			Poster:       "/posters/vikram.jpg",
-			Backdrop:     "/backdrops/vikram.jpg",
-			Trailer:      "/trailers/vikram.mp4",
-			Tone:         "ember",
-			Original:     true,
-			Kids:         false,
-			Tier:         models.TierPremium,
-			Genres:       []string{"Action", "Thriller"},
-			Badges:       []string{"4K UHD", "HDR10", "Dolby Atmos"},
-		},
-		{
-			ID:           "master",
-			Title:        "Master",
-			Kind:         "film",
-			Year:         2021,
-			Maturity:     "A",
-			RuntimeMin:   179,
-			MatchPercent: 97,
-			Logline:      "A college professor squares off against a ruthless gangster in a juvenile detention centre.",
-			Synopsis:     "Thalapathy Vijay and Vijay Sethupathi in an explosive battle of wits and power.",
-			Poster:       "/posters/master.jpg",
-			Backdrop:     "/backdrops/master.jpg",
-			Trailer:      "/trailers/master.mp4",
-			Tone:         "velvet",
-			Original:     true,
-			Kids:         false,
-			Tier:         models.TierPremium,
-			Genres:       []string{"Action", "Drama", "Thriller"},
-			Badges:       []string{"4K UHD", "Dolby Vision"},
-		},
-	}
+	// 2. Seed Initial Demo Titles ONLY on brand new fresh install
+	// If the database already has users or titles, do NOT re-insert demo titles so user deletions are respected
+	if userCount == 0 {
+		var titlesCount int
+		_ = DB.QueryRow("SELECT COUNT(*) FROM titles").Scan(&titlesCount)
+		if titlesCount == 0 {
+			titles := []struct {
+				ID           string
+				Title        string
+				Kind         string
+				Year         int
+				Maturity     string
+				RuntimeMin   int
+				MatchPercent int
+				Logline      string
+				Synopsis     string
+				Poster       string
+				Backdrop     string
+				Trailer      string
+				Tone         string
+				Original     bool
+				Kids         bool
+				Tier         models.SubscriptionTier
+				Genres       []string
+				Badges       []string
+			}{
+				{
+					ID:           "vikram",
+					Title:        "Vikram",
+					Kind:         "film",
+					Year:         2022,
+					Maturity:     "A",
+					RuntimeMin:   174,
+					MatchPercent: 99,
+					Logline:      "A special agent is sent to investigate a series of masked killings and uncovers a drug cartel conspiracy.",
+					Synopsis:     "Kamal Haasan stars as agent Vikram in Lokesh Kanagaraj's blockbuster action universe thriller.",
+					Poster:       "/posters/vikram.jpg",
+					Backdrop:     "/backdrops/vikram.jpg",
+					Trailer:      "/trailers/vikram.mp4",
+					Tone:         "ember",
+					Original:     true,
+					Kids:         false,
+					Tier:         models.TierPremium,
+					Genres:       []string{"Action", "Thriller"},
+					Badges:       []string{"4K UHD", "HDR10", "Dolby Atmos"},
+				},
+				{
+					ID:           "master",
+					Title:        "Master",
+					Kind:         "film",
+					Year:         2021,
+					Maturity:     "A",
+					RuntimeMin:   179,
+					MatchPercent: 97,
+					Logline:      "A college professor squares off against a ruthless gangster in a juvenile detention centre.",
+					Synopsis:     "Thalapathy Vijay and Vijay Sethupathi in an explosive battle of wits and power.",
+					Poster:       "/posters/master.jpg",
+					Backdrop:     "/backdrops/master.jpg",
+					Trailer:      "/trailers/master.mp4",
+					Tone:         "velvet",
+					Original:     true,
+					Kids:         false,
+					Tier:         models.TierPremium,
+					Genres:       []string{"Action", "Drama", "Thriller"},
+					Badges:       []string{"4K UHD", "Dolby Vision"},
+				},
+			}
 
-	for _, t := range titles {
-		var exists int
-		_ = DB.QueryRow("SELECT COUNT(*) FROM titles WHERE id = ?", t.ID).Scan(&exists)
-		if exists > 0 {
-			// Title already exists — preserve user-uploaded trailers, videos, and artwork
-			continue
-		}
-
-		_, err := DB.Exec(
-			`INSERT INTO titles (id, title, kind, year, maturity, runtime_min, match_percent, logline, synopsis, poster, backdrop, trailer, tone, original, kids, required_tier, genres, badges) 
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			t.ID, t.Title, t.Kind, t.Year, t.Maturity, t.RuntimeMin, t.MatchPercent, t.Logline, t.Synopsis, t.Poster, t.Backdrop, t.Trailer, t.Tone, t.Original, t.Kids, string(t.Tier), strings.Join(t.Genres, ","), strings.Join(t.Badges, ","),
-		)
-		if err != nil {
-			log.Printf("[ARMSS-OTT] Error inserting title %s: %v", t.ID, err)
+			for _, t := range titles {
+				_, err := DB.Exec(
+					`INSERT INTO titles (id, title, kind, year, maturity, runtime_min, match_percent, logline, synopsis, poster, backdrop, trailer, tone, original, kids, required_tier, genres, badges) 
+					VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+					t.ID, t.Title, t.Kind, t.Year, t.Maturity, t.RuntimeMin, t.MatchPercent, t.Logline, t.Synopsis, t.Poster, t.Backdrop, t.Trailer, t.Tone, t.Original, t.Kids, string(t.Tier), strings.Join(t.Genres, ","), strings.Join(t.Badges, ","),
+				)
+				if err != nil {
+					log.Printf("[ARMSS-OTT] Error inserting title %s: %v", t.ID, err)
+				}
+			}
 		}
 	}
 

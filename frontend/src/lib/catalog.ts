@@ -88,77 +88,10 @@ function eps(
   }));
 }
 
-export const DEFAULT_SAMPLE_TRAILERS: Record<string, string> = {
-  vikram: "/trailers/vikram.mp4",
-  master: "/trailers/master.mp4",
-};
+export const DEFAULT_SAMPLE_TRAILERS: Record<string, string> = {};
 
-const RAW_STATIC_TITLES: Title[] = [
-  {
-    id: "vikram",
-    title: "Vikram",
-    kind: "film",
-    year: 2022,
-    maturity: "A",
-    runtimeMin: 174,
-    genres: ["Action", "Thriller"],
-    logline: "A special agent is sent to investigate a series of masked killings — and uncovers a conspiracy that shakes the state.",
-    synopsis: "Retired cop Amar teams up with a lethal special agent Vikram to dismantle a drug cartel run by an enigmatic gangster. Kamal Haasan delivers a career-defining performance in Lokesh Kanagaraj's explosive action universe film.",
-    match: 99,
-    badges: ["4K", "HDR", "Atmos", "CC"],
-    language: "Tamil",
-    tone: "ember",
-    letter: "V",
-    featured: true,
-    rank: 1,
-    trending: true,
-    original: true,
-    director: "Lokesh Kanagaraj",
-    poster: "/posters/vikram.jpg",
-    backdrop: "/backdrops/vikram.jpg",
-    trailer: "/trailers/vikram.mp4",
-    cast: [
-      { name: "Kamal Haasan", role: "Vikram" },
-      { name: "Fahadh Faasil", role: "Amar" },
-      { name: "Vijay Sethupathi", role: "Santhanam" },
-    ],
-    similar: ["master"],
-  },
-  {
-    id: "master",
-    title: "Master",
-    kind: "film",
-    year: 2021,
-    maturity: "A",
-    runtimeMin: 179,
-    genres: ["Action", "Drama", "Thriller"],
-    logline: "A college professor with a troubled past squares off against a ruthless gangster in a juvenile detention centre.",
-    synopsis: "JD, an alcoholic professor, is sent to oversee a juvenile detention facility where Bhavani, a vicious gangster, is using children as weapons. Thalapathy Vijay's mass entertainer directed by Lokesh Kanagaraj.",
-    match: 97,
-    badges: ["4K", "HDR", "CC"],
-    language: "Tamil",
-    tone: "velvet",
-    letter: "M",
-    featured: true,
-    rank: 2,
-    trending: true,
-    original: true,
-    director: "Lokesh Kanagaraj",
-    poster: "/posters/master.jpg",
-    backdrop: "/backdrops/master.jpg",
-    trailer: "/trailers/master.mp4",
-    cast: [
-      { name: "Vijay", role: "JD" },
-      { name: "Vijay Sethupathi", role: "Bhavani" },
-      { name: "Malavika Mohanan", role: "Charulatha" },
-    ],
-    similar: ["vikram"],
-  },
-];
-export const INITIAL_STATIC_TITLES: Title[] = RAW_STATIC_TITLES.map((t) => ({
-  ...t,
-  trailer: t.trailer || DEFAULT_SAMPLE_TRAILERS[t.id] || "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4",
-}));
+const RAW_STATIC_TITLES: Title[] = [];
+export const INITIAL_STATIC_TITLES: Title[] = RAW_STATIC_TITLES;
 
 export const TITLES: Title[] = [...INITIAL_STATIC_TITLES];
 
@@ -178,9 +111,11 @@ export function syncBackendTitles(backendTitles: any[]): Title[] {
   const staticLookup = new Map(INITIAL_STATIC_TITLES.map((t) => [t.id, t]));
 
   if (backendTitles.length === 0) {
-    for (const t of INITIAL_STATIC_TITLES) {
-      titleMap.set(t.id, { ...t });
+    TITLES.length = 0;
+    for (const k of Object.keys(TITLE_BY_ID)) {
+      delete TITLE_BY_ID[k];
     }
+    return TITLES;
   } else {
     for (const bt of backendTitles) {
       if (!bt || !bt.id) continue;
@@ -211,7 +146,7 @@ export function syncBackendTitles(backendTitles: any[]): Title[] {
         synopsis: bt.synopsis || existing?.synopsis || bt.logline || "",
         poster: bt.poster || existing?.poster || "/posters/default.jpg",
         backdrop: bt.backdrop || existing?.backdrop || bt.poster || "/backdrops/default.jpg",
-        trailer: bt.trailer || existing?.trailer || DEFAULT_SAMPLE_TRAILERS[bt.id] || "/trailers/vikram.mp4",
+        trailer: bt.trailer || existing?.trailer || DEFAULT_SAMPLE_TRAILERS[bt.id] || "",
         tone: (bt.tone as Tone) || existing?.tone || "ember",
         letter: titleStr.charAt(0).toUpperCase(),
         original: bt.original !== undefined ? Boolean(bt.original) : existing?.original ?? false,
@@ -243,7 +178,7 @@ export function syncBackendTitles(backendTitles: any[]): Title[] {
         rank: existing?.rank,
         trending: existing?.trending ?? (!existing ? true : false),
         fresh: existing?.fresh ?? (!existing ? true : false),
-        similar: existing?.similar || ["vikram", "master"],
+        similar: existing?.similar || [],
       };
 
       titleMap.set(bt.id, updated);

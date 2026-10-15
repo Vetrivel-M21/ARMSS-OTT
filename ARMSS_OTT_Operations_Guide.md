@@ -459,3 +459,17 @@ docker compose down -v                     # ⚠️ stop + DELETE all data
 docker system prune -f                     # remove unused stuff
 docker system df                           # show docker disk usage
 ```
+
+
+
+# 1. Purge any old 'vikram' and 'master' records from MySQL
+docker exec -i armss_ott_mysql mysql -uott -pArmss@123 armss_ott -e "
+DELETE FROM watch_progress WHERE title_id IN ('vikram', 'master');
+DELETE FROM watchlist WHERE title_id IN ('vikram', 'master');
+DELETE FROM ratings WHERE title_id IN ('vikram', 'master');
+DELETE FROM episodes WHERE title_id IN ('vikram', 'master');
+DELETE FROM titles WHERE id IN ('vikram', 'master');
+"
+
+# 2. Deploy and rebuild backend and frontend with the new code
+./deploy-ubuntu.sh
