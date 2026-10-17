@@ -113,3 +113,52 @@ mobile/
 │   └── main.dart          # Entry point with ProviderScope
 └── pubspec.yaml
 ```
+
+---
+
+## 📦 Production Release Build & Keystore Signing
+
+The release APK is cryptographically signed using the project's upload keystore and configured for production distribution.
+
+### 📋 Build Summary & Artifacts
+
+| Attribute | Specification |
+|---|---|
+| **Artifact Path** | `build/app/outputs/flutter-apk/app-release.apk` |
+| **Artifact Size** | `~90.7 MB` (95,144,702 bytes) |
+| **Package / Application ID** | `com.armss.ott.armss_ott_mobile` |
+| **Signing Scheme** | APK Signature Scheme v2 (Full APK block signing) |
+| **Signing Status** | Verified (`Verifies: true`) |
+| **Minimum SDK** | Android 21 (Lollipop 5.0) |
+| **Target SDK** | Android 34 / 35 |
+| **Default Production API** | `https://aurapictures.online/api` / `http://aurapictures.online/api` (Dual-Scheme Fallback) |
+
+### 🔐 Keystore & Certificate Details
+
+- **Keystore Path**: `android/app/upload-keystore.jks`
+- **Configuration File**: `android/key.properties`
+- **Key Alias**: `upload`
+- **Owner / DN**: `CN=ARMSS OTT, OU=Engineering, O=ARMSS Group, L=Chennai, ST=Tamil Nadu, C=IN`
+- **Certificate SHA-256**: `05:AD:8B:46:E1:7D:8E:3C:D3:DC:30:BD:D0:93:B8:2D:EB:6D:F0:A7:38:0B:C5:01:54:52:E4:5B:4A:1B:8A:F0`
+- **Certificate SHA-1**: `7C:39:45:8F:F4:C4:B5:86:8B:6D:92:93:20:DA:B7:3A:AB:4C:60:BE`
+
+### 🔨 Build & Verification Commands
+
+To reproduce the release build:
+```bash
+cd mobile
+flutter build apk --release
+```
+
+To verify the APK signature integrity:
+```bash
+apksigner verify --verbose --print-certs build/app/outputs/flutter-apk/app-release.apk
+```
+
+### 📲 Installation on Android Device
+
+Connect your device via USB with USB debugging enabled, then run:
+```bash
+adb install -r build/app/outputs/flutter-apk/app-release.apk
+```
+

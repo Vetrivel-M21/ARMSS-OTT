@@ -2,13 +2,19 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 
 class ApiConstants {
-  // Allow runtime override via flutter run --dart-define=API_URL=... or --dart-define=API_HOST=...
+  // Allow runtime override via flutter run --dart-define=API_URL=... or --dart-define=API_HOST=... or --dart-define=USE_HTTPS=true
   static const String envApiUrl = String.fromEnvironment('API_URL');
   static const String envApiHost = String.fromEnvironment('API_HOST');
+  static const String envUseHttps = String.fromEnvironment('USE_HTTPS');
 
-  // Local network IP for physical device testing on same Wi-Fi
-  static const String defaultLanHost = '10.10.100.30';
-  static const String serverPort = '8081';
+  // Live production domain and fallback settings
+  static const String defaultHost = 'aurapictures.online';
+  static const String serverPort = ''; // Standard port 80/443 (empty string avoids appending :port)
+
+  // Dynamic scheme flag: allows seamless switching between HTTP and HTTPS if one protocol fails
+  static bool useHttps = envUseHttps.isNotEmpty
+      ? (envUseHttps.toLowerCase() == 'true')
+      : envApiUrl.startsWith('https://');
 
   static String get serverHost {
     if (envApiHost.isNotEmpty) return envApiHost;
@@ -16,17 +22,42 @@ class ApiConstants {
     if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
       return 'localhost';
     }
-    // Mobile devices (physical Android/iOS or emulator if configured)
-    return defaultLanHost;
+    // Default to the live server domain on mobile devices
+    return defaultHost;
+  }
+
+  static String get currentScheme => useHttps ? 'https' : 'http';
+  static String get fallbackScheme => useHttps ? 'http' : 'https';
+
+  static String get mediaBaseUrl {
+    if (envApiUrl.isNotEmpty) {
+      final stripped = envApiUrl.replaceAll(RegExp(r'/api/?$'), '');
+      if (useHttps && stripped.startsWith('http://')) {
+        return stripped.replaceFirst('http://', 'https://');
+      } else if (!useHttps && stripped.startsWith('https://')) {
+        return stripped.replaceFirst('https://', 'http://');
+      }
+      return stripped;
+    }
+    final portSuffix = serverPort.isNotEmpty ? ':$serverPort' : '';
+    return '$currentScheme://$serverHost$portSuffix';
   }
 
   static String get baseUrl {
-    if (envApiUrl.isNotEmpty) return envApiUrl;
-    return 'http://$serverHost:$serverPort/api';
+    if (envApiUrl.isNotEmpty && serverHost == defaultHost) {
+      if (useHttps && envApiUrl.startsWith('http://')) {
+        return envApiUrl.replaceFirst('http://', 'https://');
+      } else if (!useHttps && envApiUrl.startsWith('https://')) {
+        return envApiUrl.replaceFirst('https://', 'http://');
+      }
+      return envApiUrl;
+    }
+    return '$mediaBaseUrl/api';
   }
 
-  static String get mediaBaseUrl {
-    return 'http://$serverHost:$serverPort';
+  /// Switch between HTTP and HTTPS dynamically when a fallback is needed
+  static void toggleScheme() {
+    useHttps = !useHttps;
   }
 
   static String resolveMediaUrl(String? path) {
