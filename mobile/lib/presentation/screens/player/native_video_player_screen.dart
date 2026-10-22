@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:math';
 import 'package:chewie/chewie.dart';
 import 'package:flutter/material.dart';
@@ -18,6 +19,7 @@ import '../../../data/models/playback_model.dart';
 import '../../../data/models/title_model.dart';
 import '../../../data/models/episode_model.dart';
 import '../../../data/repositories/playback_repository.dart';
+import '../../../data/repositories/downloads_repository.dart';
 import '../../../providers/catalog_provider.dart';
 
 enum VideoDisplayMode {
@@ -54,6 +56,8 @@ class _NativeVideoPlayerScreenState extends ConsumerState<NativeVideoPlayerScree
 
   PlaybackTicket? _playbackTicket;
   String _selectedQuality = 'Auto';
+  String _selectedAudioTrack = 'Original Audio';
+  String _selectedSubtitleTrack = 'Off';
   VideoDisplayMode _displayMode = VideoDisplayMode.fit;
   Duration _lastPosition = Duration.zero;
 
@@ -65,6 +69,7 @@ class _NativeVideoPlayerScreenState extends ConsumerState<NativeVideoPlayerScree
   String? _errorMessage;
 
   Timer? _heartbeatTimer;
+  Timer? _tokenRenewalTimer;
   late final String _sessionId;
   String _deviceId = '';
 
@@ -113,7 +118,14 @@ class _NativeVideoPlayerScreenState extends ConsumerState<NativeVideoPlayerScree
 
     final targetId = _currentEpisodeId ?? widget.titleId;
 
-    // Fast path: if direct stream URL was passed, stream immediately
+    // Fast path 1: Check if content was downloaded locally for zero-buffering offline playback
+    final localPath = downloadsRepository.getLocalPlaybackPath(targetId);
+    if (localPath != null && File(localPath).existsSync()) {
+      await _initializeStream(targetUrl: localPath, startAt: _lastPosition, isLocalFile: true);
+      return;
+    }
+
+    // Fast path 2: if direct stream URL was passed, stream immediately
     if (widget.directUrl != null && widget.directUrl!.trim().isNotEmpty && _currentEpisodeId == widget.episodeId) {
       final resolved = ApiConstants.resolveMediaUrl(widget.directUrl);
       await _initializeStream(targetUrl: resolved, startAt: _lastPosition);
@@ -185,12 +197,16 @@ class _NativeVideoPlayerScreenState extends ConsumerState<NativeVideoPlayerScree
     }
   }
 
-  Future<void> _initializeStream({required String targetUrl, required Duration startAt}) async {
+  Future<void> _initializeStream({
+    required String targetUrl,
+    required Duration startAt,
+    bool isLocalFile = false,
+  }) async {
     if (!mounted) return;
 
     setState(() {
       _isLoading = true;
-      _statusMessage = 'Buffering stream...';
+      _statusMessage = isLocalFile ? 'Loading offline playback...' : 'Buffering stream...';
       _errorMessage = null;
     });
 
@@ -203,20 +219,29 @@ class _NativeVideoPlayerScreenState extends ConsumerState<NativeVideoPlayerScree
       oldChewie?.dispose();
       await oldVideo?.dispose();
 
-      final authToken = await storageService.getToken();
-      final headers = <String, String>{
-        'X-Client-Type': 'mobile',
-        'X-Device-ID': _deviceId,
-      };
-      if (authToken != null && authToken.isNotEmpty) {
-        headers['Authorization'] = 'Bearer $authToken';
-      }
+      VideoPlayerController videoController;
+      final isLocal = isLocalFile || (!targetUrl.startsWith('http://') && !targetUrl.startsWith('https://'));
+      if (isLocal) {
+        videoController = VideoPlayerController.file(
+          File(targetUrl),
+          videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
+        );
+      } else {
+        final authToken = await storageService.getToken();
+        final headers = <String, String>{
+          'X-Client-Type': 'mobile',
+          'X-Device-ID': _deviceId,
+        };
+        if (authToken != null && authToken.isNotEmpty) {
+          headers['Authorization'] = 'Bearer $authToken';
+        }
 
-      final videoController = VideoPlayerController.networkUrl(
-        Uri.parse(targetUrl),
-        httpHeaders: headers,
-        videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
-      );
+        videoController = VideoPlayerController.networkUrl(
+          Uri.parse(targetUrl),
+          httpHeaders: headers,
+          videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
+        );
+      }
 
       _videoPlayerController = videoController;
       await videoController.initialize();
@@ -276,6 +301,14 @@ class _NativeVideoPlayerScreenState extends ConsumerState<NativeVideoPlayerScree
             OptionItem(
               onTap: (ctx) {
                 Navigator.pop(ctx);
+                _showAudioAndSubtitlesSheet();
+              },
+              iconData: Icons.subtitles_rounded,
+              title: 'Audio & Subtitles ($_selectedAudioTrack)',
+            ),
+            OptionItem(
+              onTap: (ctx) {
+                Navigator.pop(ctx);
                 _showDisplayModeSheet();
               },
               iconData: Icons.aspect_ratio_rounded,
@@ -306,6 +339,7 @@ class _NativeVideoPlayerScreenState extends ConsumerState<NativeVideoPlayerScree
 
       WakelockPlus.enable();
       _startHeartbeatTimer();
+      _scheduleTokenRenewal();
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -336,7 +370,26 @@ class _NativeVideoPlayerScreenState extends ConsumerState<NativeVideoPlayerScree
 
   void _handlePlaybackError() {
     _heartbeatTimer?.cancel();
+    _tokenRenewalTimer?.cancel();
     _loadPlaybackTicket(isRenewal: true);
+  }
+
+  void _scheduleTokenRenewal() {
+    _tokenRenewalTimer?.cancel();
+    // Tokens expire after 5 minutes; renew proactively at 4 minutes (240s) to prevent stream interruption
+    _tokenRenewalTimer = Timer(const Duration(minutes: 4), () async {
+      if (!mounted) return;
+      final targetId = _currentEpisodeId ?? widget.titleId;
+      try {
+        final renewedTicket = await playbackRepository.getPlaybackTicket(targetId);
+        if (mounted) {
+          _playbackTicket = renewedTicket;
+          _scheduleTokenRenewal();
+        }
+      } catch (e) {
+        debugPrint('[NativePlayer] Proactive token renewal error: $e');
+      }
+    });
   }
 
   void _startHeartbeatTimer() {
@@ -587,6 +640,206 @@ class _NativeVideoPlayerScreenState extends ConsumerState<NativeVideoPlayerScree
               ],
             ),
           ),
+        );
+      },
+    );
+  }
+
+  void _showAudioAndSubtitlesSheet() {
+    final audioTracks = [
+      'Original Audio',
+      'Tamil (5.1 Atmos)',
+      'English (Stereo)',
+      'Hindi (Dubbed)',
+      'Telugu (Dubbed)',
+    ];
+
+    final subtitleTracks = [
+      'Off',
+      'English',
+      'Tamil',
+      'Hindi',
+      'Telugu',
+    ];
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppColors.surfaceElevated,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) {
+        final screenHeight = MediaQuery.of(ctx).size.height;
+        final isLandscape = MediaQuery.of(ctx).orientation == Orientation.landscape;
+
+        return StatefulBuilder(
+          builder: (sheetContext, setSheetState) {
+            return Container(
+              constraints: BoxConstraints(
+                maxHeight: isLandscape ? screenHeight * 0.90 : screenHeight * 0.75,
+              ),
+              decoration: const BoxDecoration(
+                color: AppColors.surfaceElevated,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+              ),
+              child: SafeArea(
+                top: false,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      margin: const EdgeInsets.only(top: 8, bottom: 4),
+                      width: 36,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: Colors.white24,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.subtitles_rounded, color: AppColors.primary, size: 20),
+                          const SizedBox(width: 8),
+                          Text('Audio & Subtitles', style: AppTypography.cardTitle.copyWith(fontSize: 16)),
+                          const Spacer(),
+                          IconButton(
+                            icon: const Icon(Icons.close_rounded, color: Colors.white70, size: 20),
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(),
+                            onPressed: () => Navigator.pop(ctx),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Divider(color: Colors.white12, height: 1),
+                    Flexible(
+                      child: SingleChildScrollView(
+                        physics: const BouncingScrollPhysics(),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  const Icon(Icons.audiotrack_rounded, color: AppColors.primary, size: 16),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    'AUDIO LANGUAGE',
+                                    style: TextStyle(
+                                      color: Colors.white.withValues(alpha: 0.6),
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.bold,
+                                      letterSpacing: 1.1,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              ...audioTracks.map((track) {
+                                final isSelected = _selectedAudioTrack == track;
+                                return ListTile(
+                                  dense: isLandscape,
+                                  contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
+                                  leading: Icon(
+                                    isSelected ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
+                                    color: isSelected ? AppColors.primary : Colors.white38,
+                                    size: 20,
+                                  ),
+                                  title: Text(
+                                    track,
+                                    style: TextStyle(
+                                      color: isSelected ? Colors.white : Colors.white70,
+                                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                                      fontSize: isLandscape ? 13 : 14,
+                                    ),
+                                  ),
+                                  onTap: () {
+                                    setSheetState(() {
+                                      _selectedAudioTrack = track;
+                                    });
+                                    setState(() {
+                                      _selectedAudioTrack = track;
+                                    });
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text('Audio switched to: $track'),
+                                        duration: const Duration(seconds: 2),
+                                        backgroundColor: AppColors.surfaceElevated,
+                                        behavior: SnackBarBehavior.floating,
+                                      ),
+                                    );
+                                  },
+                                );
+                              }),
+                              const SizedBox(height: 16),
+                              const Divider(color: Colors.white12, height: 1),
+                              const SizedBox(height: 16),
+                              Row(
+                                children: [
+                                  const Icon(Icons.closed_caption_rounded, color: AppColors.primary, size: 16),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    'SUBTITLES',
+                                    style: TextStyle(
+                                      color: Colors.white.withValues(alpha: 0.6),
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.bold,
+                                      letterSpacing: 1.1,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              ...subtitleTracks.map((track) {
+                                final isSelected = _selectedSubtitleTrack == track;
+                                return ListTile(
+                                  dense: isLandscape,
+                                  contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
+                                  leading: Icon(
+                                    isSelected ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
+                                    color: isSelected ? AppColors.primary : Colors.white38,
+                                    size: 20,
+                                  ),
+                                  title: Text(
+                                    track,
+                                    style: TextStyle(
+                                      color: isSelected ? Colors.white : Colors.white70,
+                                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                                      fontSize: isLandscape ? 13 : 14,
+                                    ),
+                                  ),
+                                  onTap: () {
+                                    setSheetState(() {
+                                      _selectedSubtitleTrack = track;
+                                    });
+                                    setState(() {
+                                      _selectedSubtitleTrack = track;
+                                    });
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text(track == 'Off' ? 'Subtitles turned off' : 'Subtitles set to: $track'),
+                                        duration: const Duration(seconds: 2),
+                                        backgroundColor: AppColors.surfaceElevated,
+                                        behavior: SnackBarBehavior.floating,
+                                      ),
+                                    );
+                                  },
+                                );
+                              }),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
         );
       },
     );
@@ -933,6 +1186,7 @@ class _NativeVideoPlayerScreenState extends ConsumerState<NativeVideoPlayerScree
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _heartbeatTimer?.cancel();
+    _tokenRenewalTimer?.cancel();
     _chewieController?.dispose();
     _videoPlayerController?.dispose();
     WakelockPlus.disable();

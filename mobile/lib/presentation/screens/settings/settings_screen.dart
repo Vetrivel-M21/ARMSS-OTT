@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../../core/storage/storage_service.dart';
+import '../../../core/constants/api_constants.dart';
 import '../../../data/repositories/profile_repository.dart';
 import '../../../providers/auth_provider.dart';
 
@@ -174,7 +175,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             child: OutlinedButton.icon(
               onPressed: () async {
                 await ref.read(authProvider.notifier).logout();
-                if (mounted) context.go('/login');
+                if (context.mounted) context.go('/login');
               },
               icon: const Icon(Icons.logout_rounded, color: AppColors.liveRed, size: 20),
               label: const Text('Sign Out', style: TextStyle(color: AppColors.liveRed, fontWeight: FontWeight.bold)),
@@ -377,10 +378,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         ),
                         const SizedBox(height: 10),
                         Text(
-                          '1. Open your web browser and visit armss-ott.com\n'
+                          '1. Open your browser and navigate to ${ApiConstants.mediaBaseUrl}/plans\n'
                           '2. Sign in with ${user?.email ?? "your streaming account"}\n'
-                          '3. Go to Plans and choose Standard or VIP 4K\n'
-                          '4. Reopen this mobile app to instantly enjoy VIP access',
+                          '3. Choose Standard (1080p) or Premium VIP (4K)\n'
+                          '4. Complete payment and tap "Sync Plan Status" below to instantly update your account.',
                           style: AppTypography.bodySmall.copyWith(color: Colors.white70, height: 1.4),
                         ),
                       ],
@@ -394,21 +395,50 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     height: 46,
                     child: ElevatedButton.icon(
                       onPressed: () {
-                        Clipboard.setData(const ClipboardData(text: 'https://armss-ott.com/plans'));
-                        Navigator.of(ctx).pop();
+                        final plansUrl = '${ApiConstants.mediaBaseUrl}/plans';
+                        Clipboard.setData(ClipboardData(text: plansUrl));
                         ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Website link copied: https://armss-ott.com/plans'),
+                          SnackBar(
+                            content: Text('Portal link copied: $plansUrl'),
                             backgroundColor: AppColors.surfaceElevated,
-                            duration: Duration(seconds: 3),
+                            duration: const Duration(seconds: 3),
                           ),
                         );
                       },
                       icon: const Icon(Icons.copy_rounded, size: 18),
-                      label: const Text('Copy Website Link (armss-ott.com)'),
+                      label: Text('Copy Portal Link (${ApiConstants.serverHost})'),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: AppColors.primary,
                         foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+
+                  // Sync Plan Status Button
+                  SizedBox(
+                    width: double.infinity,
+                    height: 44,
+                    child: OutlinedButton.icon(
+                      onPressed: () async {
+                        final updated = await ref.read(authProvider.notifier).checkStatus();
+                        if (context.mounted) {
+                          Navigator.of(ctx).pop();
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                'Plan status refreshed! Current tier: ${updated?.subscriptionTier.toUpperCase() ?? "FREE"}',
+                              ),
+                              backgroundColor: AppColors.surfaceElevated,
+                            ),
+                          );
+                        }
+                      },
+                      icon: const Icon(Icons.sync_rounded, size: 18, color: AppColors.gold),
+                      label: const Text('Sync Plan Status', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                      style: OutlinedButton.styleFrom(
+                        side: BorderSide(color: AppColors.gold.withOpacity(0.6)),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                       ),
                     ),

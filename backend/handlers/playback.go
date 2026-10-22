@@ -355,13 +355,28 @@ func GetRenditionPlaylist(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Normalize playlist filename
-	if !strings.HasSuffix(rendition, ".m3u8") {
-		rendition += ".m3u8"
+	// Normalize rendition filename
+	cleanRendition := strings.TrimSuffix(rendition, "/index.m3u8")
+	if !strings.HasSuffix(cleanRendition, ".m3u8") {
+		cleanRendition += ".m3u8"
 	}
 
-	playlistKey := fmt.Sprintf("videos/%s/%s", videoID, rendition)
+	// 1. Try direct rendition key (e.g. stream_0.m3u8 or 1080p.m3u8)
+	playlistKey := fmt.Sprintf("videos/%s/%s", videoID, cleanRendition)
 	rawBytes, err := storageSvc.FetchObjectBytes(r.Context(), storageSvc.HLSBucket(), playlistKey)
+	if err != nil {
+		// 2. If direct key not found, attempt resolution via master.m3u8 (e.g. 1080p -> stream_1.m3u8)
+		masterKey := fmt.Sprintf("videos/%s/master.m3u8", videoID)
+		masterBytes, masterErr := storageSvc.FetchObjectBytes(r.Context(), storageSvc.HLSBucket(), masterKey)
+		if masterErr == nil {
+			mappedName := playback.ResolveRenditionFilename(masterBytes, videoID, cleanRendition)
+			if mappedName != "" && mappedName != cleanRendition {
+				mappedKey := fmt.Sprintf("videos/%s/%s", videoID, mappedName)
+				rawBytes, err = storageSvc.FetchObjectBytes(r.Context(), storageSvc.HLSBucket(), mappedKey)
+			}
+		}
+	}
+
 	if err != nil {
 		http.Error(w, `{"error":"rendition playlist not found"}`, http.StatusNotFound)
 		return

@@ -164,7 +164,18 @@ func RewriteMasterPlaylist(rawContent []byte, videoID, tokenStr string, maxHeigh
 
 	for _, item := range parsed.items {
 		if !item.isRendition {
-			sb.WriteString(item.rawLine)
+			line := item.rawLine
+			if strings.HasPrefix(line, "#EXT-X-MEDIA:") {
+				match := mapUriRegex.FindStringSubmatch(line)
+				if len(match) == 2 {
+					origUri := match[1]
+					if !strings.HasPrefix(origUri, "http://") && !strings.HasPrefix(origUri, "https://") {
+						newUri := fmt.Sprintf("%s/videos/%s/%s?token=%s", cleanBase, videoID, origUri, escapedToken)
+						line = strings.Replace(line, fmt.Sprintf(`URI="%s"`, origUri), fmt.Sprintf(`URI="%s"`, newUri), 1)
+					}
+				}
+			}
+			sb.WriteString(line)
 			sb.WriteByte('\n')
 			continue
 		}
@@ -256,4 +267,49 @@ func RewriteRenditionPlaylist(
 	}
 
 	return strings.Join(outLines, "\n") + "\n", nil
+}
+
+// ResolveRenditionFilename maps human-readable resolution names (e.g. "1080p", "720p", "480p", "360p")
+// or direct stream names to the actual rendition filename in storage as described by master.m3u8.
+func ResolveRenditionFilename(rawMaster []byte, videoID, requestedRendition string) string {
+	clean := strings.TrimSuffix(strings.TrimSuffix(requestedRendition, "/index.m3u8"), ".m3u8")
+	// If it's already a stream index e.g. stream_0, return with .m3u8
+	if strings.HasPrefix(clean, "stream_") {
+		return clean + ".m3u8"
+	}
+
+	// Try parsing target height (e.g. "1080p" -> 1080)
+	targetHeight := 0
+	numStr := strings.TrimSuffix(clean, "p")
+	if h, err := strconv.Atoi(numStr); err == nil && h > 0 {
+		targetHeight = h
+	}
+
+	if targetHeight == 0 || len(rawMaster) == 0 {
+		return requestedRendition
+	}
+
+	parsed := getOrParseMaster(videoID, rawMaster)
+	var bestSubUri string
+	minDiff := 999999
+
+	for _, item := range parsed.items {
+		if !item.isRendition || item.height <= 0 {
+			continue
+		}
+		if item.height == targetHeight {
+			return item.subUri
+		}
+		diff := targetHeight - item.height
+		if diff >= 0 && diff < minDiff {
+			minDiff = diff
+			bestSubUri = item.subUri
+		}
+	}
+
+	if bestSubUri != "" {
+		return bestSubUri
+	}
+
+	return requestedRendition
 }

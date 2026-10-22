@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
+import Hls, { type Level } from "hls.js";
 import {
   Check,
   ChevronLeft,
@@ -40,6 +41,34 @@ const AUDIO_TRACKS = [
 ];
 const SUB_TRACKS = ["Off", "Tamil", "English", "Hindi"] as const;
 
+/**
+ * Checks whether the browser hardware and software support decoding 4K (2160p) H.264
+ * via the standard W3C MediaCapabilities API.
+ */
+async function check4KDecodeSupport(): Promise<boolean> {
+  if (
+    typeof navigator === "undefined" ||
+    !navigator.mediaCapabilities?.decodingInfo
+  ) {
+    return true;
+  }
+  try {
+    const info = await navigator.mediaCapabilities.decodingInfo({
+      type: "media-source",
+      video: {
+        contentType: 'video/mp4; codecs="avc1.640033"',
+        width: 3840,
+        height: 2160,
+        bitrate: 16000000,
+        framerate: 24,
+      },
+    });
+    return Boolean(info.supported);
+  } catch {
+    return true;
+  }
+}
+
 /** Duration in ms to show the seek flash overlay */
 const SEEK_FLASH_MS = 500;
 /** Duration in ms to keep the loading spinner visible after a seek */
@@ -72,6 +101,8 @@ export function PlayerView({
     "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4";
 
   const videoRef = useRef<HTMLVideoElement>(null);
+  const hlsRef = useRef<Hls | null>(null);
+  const [levels, setLevels] = useState<Level[]>([]);
   const shellRef = useRef<HTMLDivElement>(null);
   const hideTimer = useRef<number | null>(null);
   const seekSpinnerTimer = useRef<number | null>(null);
@@ -111,10 +142,6 @@ export function PlayerView({
       .checkPlaybackTicket(targetVideoId)
       .then((ticket) => {
         if (!isMounted) return;
-        const isFree =
-          title.required_tier === "free" ||
-          (title as any).requiredTier === "free" ||
-          (!title.required_tier && !(title as any).requiredTier);
 
         if (ticket && ticket.allowed === false) {
           setPlaybackAllowed(false);
@@ -123,9 +150,23 @@ export function PlayerView({
           setUpgradeModalOpen(true, title.title);
         } else {
           setPlaybackAllowed(true);
-          if (ticket.manifest_url) {
-            setTicketStream(ticket.manifest_url);
-          }
+          // Fetch stream ticket (/videos/:id/playback) to get signed HLS master manifest
+          api
+            .getPlayback(targetVideoId)
+            .then((streamTicket) => {
+              if (!isMounted) return;
+              if (streamTicket.manifestUrl) {
+                setTicketStream(streamTicket.manifestUrl);
+                if (streamTicket.resumePositionSec > 0 && !saved?.progress) {
+                  setTime(streamTicket.resumePositionSec);
+                }
+              }
+            })
+            .catch(() => {
+              if (ticket.manifest_url) {
+                setTicketStream(ticket.manifest_url);
+              }
+            });
         }
       })
       .catch(() => {
@@ -145,9 +186,44 @@ export function PlayerView({
   const [quality, setQuality] = useState<(typeof QUALITIES)[number]>("Auto");
   const [subs, setSubs] = useState(false);
   const [audioTrack, setAudioTrack] = useState("Tamil (Original · 5.1 Atmos)");
-  const [subTrack, setSubTrack] = useState<(typeof SUB_TRACKS)[number]>("Off");
+  const [subTrack, setSubTrack] = useState<string>("Off");
+  const [audioTracksList, setAudioTracksList] = useState<{ id: number; name: string; lang?: string }[]>([]);
+  const [selectedAudioId, setSelectedAudioId] = useState<number>(0);
+  const [subTracksList, setSubTracksList] = useState<{ id: number; name: string; lang?: string }[]>([]);
+  const [selectedSubId, setSelectedSubId] = useState<number>(-1);
   const [menus, setMenus] = useState<"speed" | "quality" | "audio" | "subs" | null>(null);
   const [episodesOpen, setEpisodesOpen] = useState(false);
+
+  const handleAudioSelect = (id: number, name: string) => {
+    setSelectedAudioId(id);
+    setAudioTrack(name);
+    if (hlsRef.current && hlsRef.current.audioTracks.length > 0) {
+      hlsRef.current.audioTrack = id;
+    }
+    setMenus(null);
+    toast.success(`Audio: ${name}`);
+  };
+
+  const handleSubSelect = (id: number, name: string) => {
+    setSelectedSubId(id);
+    setSubTrack(id === -1 ? "Off" : name);
+    setSubs(id !== -1);
+    if (hlsRef.current) {
+      hlsRef.current.subtitleTrack = id;
+      hlsRef.current.subtitleDisplay = id !== -1;
+    }
+    if (videoRef.current && videoRef.current.textTracks) {
+      for (let i = 0; i < videoRef.current.textTracks.length; i++) {
+        videoRef.current.textTracks[i].mode = (i === id) ? "showing" : "disabled";
+      }
+    }
+    setMenus(null);
+    if (id === -1) {
+      toast("Subtitles turned off");
+    } else {
+      toast.success(`Subtitles: ${name}`);
+    }
+  };
 
   /** True for SEEK_SPINNER_MS after a manual seek */
   const [seekingSpinner, setSeekingSpinner] = useState(false);
@@ -213,7 +289,200 @@ export function PlayerView({
     return () => window.clearInterval(id);
   }, [persist, playbackAllowed]);
 
-  // Sync video element properties
+  // Hls.js Lifecycle & Stream Setup
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v || !playbackAllowed || !videoSrc) return;
+
+    let isCancelled = false;
+
+    // Destroy any existing HLS instance before attaching a new one
+    if (hlsRef.current) {
+      hlsRef.current.destroy();
+      hlsRef.current = null;
+    }
+
+    // Resolve absolute URL if relative
+    let resolvedUrl = videoSrc;
+    if (resolvedUrl.startsWith("/")) {
+      const apiHost = (import.meta.env.VITE_API_BASE_URL || "http://localhost:8081/api").replace(/\/api\/?$/, "");
+      resolvedUrl = `${apiHost}${resolvedUrl}`;
+    }
+
+    const isHlsStream = resolvedUrl.includes(".m3u8");
+
+    if (isHlsStream && Hls.isSupported()) {
+      const hls = new Hls({
+        capLevelToPlayerSize: true, // Cap rung to player display size
+        startLevel: 0, // Fast start: download lowest rung for instant first frame
+        maxBufferLength: 25,
+        maxMaxBufferLength: 50,
+        maxBufferSize: 30 * 1000 * 1000,
+        backBufferLength: 15,
+        enableWorker: true,
+        progressive: true,
+        lowLatencyMode: false,
+        xhrSetup: (xhr) => {
+          xhr.withCredentials = false;
+        },
+      });
+      hlsRef.current = hls;
+
+      hls.loadSource(resolvedUrl);
+      hls.attachMedia(v);
+
+      hls.on(Hls.Events.MANIFEST_PARSED, (_, data) => {
+        if (isCancelled) return;
+        setLevels(data.levels);
+        hls.currentLevel = -1; // Auto ABR
+
+        // Parse and populate audio tracks if available
+        if (hls.audioTracks && hls.audioTracks.length > 0) {
+          const parsed = hls.audioTracks.map((t, idx) => ({
+            id: idx,
+            name: t.name || t.lang || `Track ${idx + 1}`,
+            lang: t.lang,
+          }));
+          setAudioTracksList(parsed);
+          const activeIndex = hls.audioTrack >= 0 ? hls.audioTrack : 0;
+          setSelectedAudioId(activeIndex);
+          if (parsed[activeIndex]) {
+            setAudioTrack(parsed[activeIndex].name);
+          }
+        }
+
+        // Parse and populate subtitle tracks if available
+        if (hls.subtitleTracks && hls.subtitleTracks.length > 0) {
+          const parsedSubs = hls.subtitleTracks.map((t, idx) => ({
+            id: idx,
+            name: t.name || t.lang || `Subtitle ${idx + 1}`,
+            lang: t.lang,
+          }));
+          setSubTracksList(parsedSubs);
+          setSelectedSubId(hls.subtitleTrack);
+          if (hls.subtitleTrack >= 0 && parsedSubs[hls.subtitleTrack]) {
+            setSubTrack(parsedSubs[hls.subtitleTrack].name);
+            setSubs(true);
+          }
+        }
+
+        if (time > 0 && v.duration) {
+          try {
+            v.currentTime = time;
+          } catch {}
+        }
+
+        if (playing) {
+          v.play().catch(() => setPlaying(false));
+        }
+      });
+
+      hls.on(Hls.Events.AUDIO_TRACKS_UPDATED, (_, data) => {
+        if (isCancelled) return;
+        if (data.audioTracks && data.audioTracks.length > 0) {
+          const parsed = data.audioTracks.map((t, idx) => ({
+            id: idx,
+            name: t.name || t.lang || `Track ${idx + 1}`,
+            lang: t.lang,
+          }));
+          setAudioTracksList(parsed);
+          const activeIndex = hls.audioTrack >= 0 ? hls.audioTrack : 0;
+          if (parsed[activeIndex]) {
+            setSelectedAudioId(activeIndex);
+            setAudioTrack(parsed[activeIndex].name);
+          }
+        }
+      });
+
+      hls.on(Hls.Events.SUBTITLE_TRACKS_UPDATED, (_, data) => {
+        if (isCancelled) return;
+        if (data.subtitleTracks && data.subtitleTracks.length > 0) {
+          const parsedSubs = data.subtitleTracks.map((t, idx) => ({
+            id: idx,
+            name: t.name || t.lang || `Subtitle ${idx + 1}`,
+            lang: t.lang,
+          }));
+          setSubTracksList(parsedSubs);
+          setSelectedSubId(hls.subtitleTrack);
+          if (hls.subtitleTrack >= 0 && parsedSubs[hls.subtitleTrack]) {
+            setSubTrack(parsedSubs[hls.subtitleTrack].name);
+            setSubs(true);
+          }
+        }
+      });
+
+      hls.on(Hls.Events.ERROR, (_, errData) => {
+        if (isCancelled) return;
+
+        // Handle token expiration by re-fetching ticket
+        if (errData.response?.code === 401 || errData.response?.code === 403) {
+          console.warn("[PlayerView] Playback token expired. Refreshing ticket...");
+          const resumeAt = v.currentTime;
+          const targetVideoId = episode?.id || title.id;
+          api.getPlayback(targetVideoId)
+            .then((freshTicket) => {
+              let freshUrl = freshTicket.manifestUrl;
+              if (freshUrl.startsWith("/")) {
+                const apiHost = (import.meta.env.VITE_API_BASE_URL || "http://localhost:8081/api").replace(/\/api\/?$/, "");
+                freshUrl = `${apiHost}${freshUrl}`;
+              }
+              setTicketStream(freshUrl);
+              hls.loadSource(freshUrl);
+              hls.startLoad(resumeAt);
+            })
+            .catch(() => {
+              toast.error("Your streaming session has expired. Please sign in again.");
+            });
+          return;
+        }
+
+        if (errData.fatal) {
+          switch (errData.type) {
+            case Hls.ErrorTypes.NETWORK_ERROR:
+              console.warn("[PlayerView] Fatal network error. Attempting recovery...");
+              hls.startLoad();
+              break;
+            case Hls.ErrorTypes.MEDIA_ERROR:
+              console.warn("[PlayerView] Fatal media error. Attempting recovery...");
+              hls.recoverMediaError();
+              break;
+            default:
+              console.warn("[PlayerView] Unrecoverable HLS error:", errData);
+              hls.destroy();
+              if (!backupStream && videoSrc !== "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4") {
+                setBackupStream("https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4");
+                toast.info("Switching to backup HD stream...");
+              } else {
+                toast.error("Video stream unavailable. Showing cinematic backdrop.");
+              }
+              break;
+          }
+        }
+      });
+    } else if (isHlsStream && v.canPlayType("application/vnd.apple.mpegurl")) {
+      // Native Safari HLS
+      v.src = resolvedUrl;
+      if (playing) {
+        v.play().catch(() => setPlaying(false));
+      }
+    } else {
+      // Direct MP4 or static asset fallback
+      v.src = resolvedUrl;
+      if (playing) {
+        v.play().catch(() => setPlaying(false));
+      }
+    }
+
+    return () => {
+      isCancelled = true;
+      if (hlsRef.current) {
+        hlsRef.current.destroy();
+        hlsRef.current = null;
+      }
+    };
+  }, [videoSrc, playbackAllowed]);
+
+  // Sync video element playback properties
   useEffect(() => {
     const v = videoRef.current;
     if (!v || !playbackAllowed) return;
@@ -225,7 +494,55 @@ export function PlayerView({
     } else {
       v.pause();
     }
-  }, [playing, muted, volume, speed, videoSrc, playbackAllowed]);
+  }, [playing, muted, volume, speed, playbackAllowed]);
+
+  // Handle Quality Selection (ABR vs Fixed Resolution)
+  const handleQualitySelect = async (q: (typeof QUALITIES)[number]) => {
+    if (q === "4K") {
+      if (!isPremiumVIP) {
+        setMenus(null);
+        setUpgradeModalOpen(true, "4K Ultra HD Streaming");
+        return;
+      }
+      const canDecode = await check4KDecodeSupport();
+      if (!canDecode) {
+        toast.warning("Hardware 4K decoding might experience frame drops on this display.");
+      }
+    }
+
+    setQuality(q);
+    setMenus(null);
+
+    const hls = hlsRef.current;
+    if (!hls || levels.length === 0) {
+      toast(`Streaming quality: ${q}`);
+      return;
+    }
+
+    if (q === "Auto") {
+      hls.currentLevel = -1;
+      toast.success("Streaming quality: Auto (Adaptive Bitrate)");
+      return;
+    }
+
+    const targetHeight = q === "4K" ? 2160 : q === "1080p" ? 1080 : 720;
+    let bestIdx = -1;
+    let bestDiff = 999999;
+    levels.forEach((lvl, idx) => {
+      const diff = Math.abs(lvl.height - targetHeight);
+      if (diff < bestDiff) {
+        bestDiff = diff;
+        bestIdx = idx;
+      }
+    });
+
+    if (bestIdx !== -1) {
+      hls.currentLevel = bestIdx;
+      toast.success(`Locked resolution: ${levels[bestIdx].height}p (${q})`);
+    } else {
+      toast(`Streaming quality: ${q}`);
+    }
+  };
 
   // Auto-hide UI after inactivity
   const bumpUi = useCallback(() => {
@@ -402,8 +719,6 @@ export function PlayerView({
       ) : videoSrc ? (
         <video
           ref={videoRef}
-          key={videoSrc}
-          src={videoSrc}
           className="absolute inset-0 h-full w-full object-cover"
           loop={isLive}
           playsInline
@@ -743,34 +1058,58 @@ export function PlayerView({
               >
                 <div className="p-1 min-w-36">
                   <p className="px-3 py-1.5 text-[11px] font-semibold uppercase text-muted tracking-wider">Subtitles</p>
-                  {SUB_TRACKS.map((st) => (
-                    <button
-                      key={st}
-                      type="button"
-                      className={cn(
-                        "flex w-full items-center justify-between px-3 py-2 text-left text-xs rounded-sm transition-colors",
-                        (st === "Off" && (!subs || subTrack === "Off")) || (subs && st === subTrack)
-                          ? "bg-accent/15 text-accent font-semibold"
-                          : "text-muted hover:text-fg hover:bg-white/5",
-                      )}
-                      onClick={() => {
-                        if (st === "Off") {
-                          setSubs(false);
-                          setSubTrack("Off");
-                        } else {
-                          setSubs(true);
-                          setSubTrack(st);
-                        }
-                        setMenus(null);
-                        toast(`Subtitles set to: ${st}`);
-                      }}
-                    >
-                      <span>{st}</span>
-                      {((st === "Off" && (!subs || subTrack === "Off")) || (subs && st === subTrack)) && (
-                        <Check className="size-3.5 text-accent shrink-0" />
-                      )}
-                    </button>
-                  ))}
+                  <button
+                    type="button"
+                    className={cn(
+                      "flex w-full items-center justify-between px-3 py-2 text-left text-xs rounded-sm transition-colors",
+                      !subs || subTrack === "Off"
+                        ? "bg-accent/15 text-accent font-semibold"
+                        : "text-muted hover:text-fg hover:bg-white/5",
+                    )}
+                    onClick={() => handleSubSelect(-1, "Off")}
+                  >
+                    <span>Off</span>
+                    {(!subs || subTrack === "Off") && (
+                      <Check className="size-3.5 text-accent shrink-0" />
+                    )}
+                  </button>
+                  {subTracksList.length > 0
+                    ? subTracksList.map((st) => (
+                        <button
+                          key={`sub-${st.id}`}
+                          type="button"
+                          className={cn(
+                            "flex w-full items-center justify-between px-3 py-2 text-left text-xs rounded-sm transition-colors",
+                            subs && selectedSubId === st.id
+                              ? "bg-accent/15 text-accent font-semibold"
+                              : "text-muted hover:text-fg hover:bg-white/5",
+                          )}
+                          onClick={() => handleSubSelect(st.id, st.name)}
+                        >
+                          <span className="truncate">{st.name}</span>
+                          {subs && selectedSubId === st.id && (
+                            <Check className="size-3.5 text-accent shrink-0 ml-2" />
+                          )}
+                        </button>
+                      ))
+                    : SUB_TRACKS.filter((s) => s !== "Off").map((st, idx) => (
+                        <button
+                          key={st}
+                          type="button"
+                          className={cn(
+                            "flex w-full items-center justify-between px-3 py-2 text-left text-xs rounded-sm transition-colors",
+                            subs && subTrack === st
+                              ? "bg-accent/15 text-accent font-semibold"
+                              : "text-muted hover:text-fg hover:bg-white/5",
+                          )}
+                          onClick={() => handleSubSelect(idx, st)}
+                        >
+                          <span>{st}</span>
+                          {subs && subTrack === st && (
+                            <Check className="size-3.5 text-accent shrink-0" />
+                          )}
+                        </button>
+                      ))}
                 </div>
               </Menu>
 
@@ -784,28 +1123,43 @@ export function PlayerView({
               >
                 <div className="p-1 min-w-56">
                   <p className="px-3 py-1.5 text-[11px] font-semibold uppercase text-muted tracking-wider">Audio Tracks</p>
-                  {AUDIO_TRACKS.map((track) => (
-                    <button
-                      key={track}
-                      type="button"
-                      className={cn(
-                        "flex w-full items-center justify-between px-3 py-2 text-left text-xs rounded-sm transition-colors",
-                        track === audioTrack
-                          ? "bg-accent/15 text-accent font-semibold"
-                          : "text-muted hover:text-fg hover:bg-white/5",
-                      )}
-                      onClick={() => {
-                        setAudioTrack(track);
-                        setMenus(null);
-                        toast.success(`Audio: ${track}`);
-                      }}
-                    >
-                      <span className="truncate">{track}</span>
-                      {track === audioTrack && (
-                        <Check className="size-3.5 text-accent shrink-0 ml-2" />
-                      )}
-                    </button>
-                  ))}
+                  {audioTracksList.length > 0
+                    ? audioTracksList.map((track) => (
+                        <button
+                          key={`audio-${track.id}`}
+                          type="button"
+                          className={cn(
+                            "flex w-full items-center justify-between px-3 py-2 text-left text-xs rounded-sm transition-colors",
+                            selectedAudioId === track.id
+                              ? "bg-accent/15 text-accent font-semibold"
+                              : "text-muted hover:text-fg hover:bg-white/5",
+                          )}
+                          onClick={() => handleAudioSelect(track.id, track.name)}
+                        >
+                          <span className="truncate">{track.name}</span>
+                          {selectedAudioId === track.id && (
+                            <Check className="size-3.5 text-accent shrink-0 ml-2" />
+                          )}
+                        </button>
+                      ))
+                    : AUDIO_TRACKS.map((track, idx) => (
+                        <button
+                          key={track}
+                          type="button"
+                          className={cn(
+                            "flex w-full items-center justify-between px-3 py-2 text-left text-xs rounded-sm transition-colors",
+                            track === audioTrack
+                              ? "bg-accent/15 text-accent font-semibold"
+                              : "text-muted hover:text-fg hover:bg-white/5",
+                          )}
+                          onClick={() => handleAudioSelect(idx, track)}
+                        >
+                          <span className="truncate">{track}</span>
+                          {track === audioTrack && (
+                            <Check className="size-3.5 text-accent shrink-0 ml-2" />
+                          )}
+                        </button>
+                      ))}
                 </div>
               </Menu>
 
@@ -857,16 +1211,7 @@ export function PlayerView({
                         "flex w-full items-center justify-between px-3 py-2 text-left text-xs rounded-sm transition-colors",
                         q === quality ? "bg-accent/15 text-accent font-semibold" : "text-muted hover:text-fg hover:bg-white/5",
                       )}
-                      onClick={() => {
-                        if (q === "4K" && !isPremiumVIP) {
-                          setMenus(null);
-                          setUpgradeModalOpen(true, "4K Ultra HD Streaming");
-                          return;
-                        }
-                        setQuality(q);
-                        setMenus(null);
-                        toast(`Streaming quality: ${q}`);
-                      }}
+                      onClick={() => void handleQualitySelect(q)}
                     >
                       <span className="flex items-center gap-1.5">
                         {q}

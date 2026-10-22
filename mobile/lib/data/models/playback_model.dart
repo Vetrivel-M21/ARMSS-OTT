@@ -39,7 +39,7 @@ class PlaybackTicket {
   String getRenditionUrl(String rendition) {
     final t = token;
     final tokenSuffix = (t != null && t.isNotEmpty) ? '?token=$t' : '';
-    final path = '/api/videos/$videoId/$rendition/index.m3u8$tokenSuffix';
+    final path = '/api/videos/$videoId/$rendition.m3u8$tokenSuffix';
     return ApiConstants.resolveMediaUrl(path);
   }
 
