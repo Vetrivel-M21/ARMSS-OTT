@@ -739,6 +739,7 @@ func AdminUpload(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"failed writing file: `+err.Error()+`"}`, http.StatusInternalServerError)
 		return
 	}
+	_ = os.Chmod(dstPath, 0644)
 
 	// Mirror to frontend public/uploads if running locally in dev
 	devFrontendDir := filepath.Join("..", "frontend", "public", "uploads")

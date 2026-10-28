@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import {
   Activity,
@@ -68,6 +68,22 @@ import { TITLES, type Title } from "@/lib/catalog";
 import { BackdropArt } from "@/components/poster";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+
+function hasBadgeInString(badges: string, name: string): boolean {
+  return (badges || "")
+    .split(",")
+    .map((s) => s.trim().toLowerCase())
+    .includes(name.toLowerCase());
+}
+
+function toggleBadgeInString(badges: string, name: string, add: boolean): string {
+  const list = (badges || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0 && s.toLowerCase() !== name.toLowerCase());
+  if (add) list.push(name);
+  return list.join(", ");
+}
 
 function UploadButton({
   accept = "image/*",
@@ -1444,6 +1460,18 @@ function ContentTab() {
     thumbnail_url: string;
   } | null>(null);
   const [savingEpisode, setSavingEpisode] = useState(false);
+  const [isCustomKindNew, setIsCustomKindNew] = useState(false);
+  const [isCustomKindEdit, setIsCustomKindEdit] = useState(false);
+
+  const existingCustomKinds = useMemo(() => {
+    const set = new Set<string>();
+    titles.forEach((t: any) => {
+      if (t.kind && !["film", "series", "documentary", "live"].includes(t.kind)) {
+        set.add(t.kind);
+      }
+    });
+    return Array.from(set);
+  }, [titles]);
 
   const [newTitle, setNewTitle] = useState({
     title: "",
@@ -1525,6 +1553,8 @@ function ContentTab() {
       badges: badgesStr,
     });
     setEditingEpisodeForm(null);
+    const isCustom = !["film", "series", "documentary", "live"].includes(t.kind || "film");
+    setIsCustomKindEdit(isCustom);
     if ((t.kind || "film") === "series") {
       void fetchEpisodesForTitle(t.id);
     } else {
@@ -1743,7 +1773,10 @@ function ContentTab() {
           </button>
           <Button
             type="button"
-            onClick={() => setShowAddModal(true)}
+            onClick={() => {
+              setIsCustomKindNew(false);
+              setShowAddModal(true);
+            }}
             className="flex items-center gap-1.5 text-xs font-semibold"
           >
             <Plus className="size-4" />
@@ -1785,17 +1818,65 @@ function ContentTab() {
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-muted mb-1">Content Type</label>
-                    <select
-                      value={editingTitle.kind}
-                      onChange={(e) => setEditingTitle({ ...editingTitle, kind: e.target.value })}
-                      className="w-full rounded-lg bg-elevated px-2.5 py-2 text-sm text-fg border border-border focus:outline-none"
-                    >
-                      <option value="film">Film</option>
-                      <option value="series">Web Series</option>
-                      <option value="documentary">Documentary</option>
-                      <option value="live">Live TV</option>
-                    </select>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-xs font-medium text-muted">Content Type</label>
+                      {isCustomKindEdit ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsCustomKindEdit(false);
+                            setEditingTitle({ ...editingTitle, kind: "film" });
+                          }}
+                          className="text-[11px] text-accent hover:underline font-medium"
+                        >
+                          Use Presets
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsCustomKindEdit(true);
+                          }}
+                          className="text-[11px] text-accent hover:underline font-medium"
+                        >
+                          + Custom Type
+                        </button>
+                      )}
+                    </div>
+                    {isCustomKindEdit ? (
+                      <input
+                        type="text"
+                        required
+                        placeholder="e.g. short_film, podcast, anime, event"
+                        value={editingTitle.kind}
+                        onChange={(e) => setEditingTitle({ ...editingTitle, kind: e.target.value.toLowerCase().replace(/\s+/g, "_") })}
+                        className="w-full rounded-lg bg-elevated px-2.5 py-2 text-sm text-fg border border-accent focus:outline-none"
+                        autoFocus
+                      />
+                    ) : (
+                      <select
+                        value={editingTitle.kind}
+                        onChange={(e) => {
+                          if (e.target.value === "__custom__") {
+                            setIsCustomKindEdit(true);
+                          } else {
+                            setEditingTitle({ ...editingTitle, kind: e.target.value });
+                          }
+                        }}
+                        className="w-full rounded-lg bg-elevated px-2.5 py-2 text-sm text-fg border border-border focus:outline-none"
+                      >
+                        <option value="film">Film / Movie</option>
+                        <option value="series">Web Series</option>
+                        <option value="documentary">Documentary</option>
+                        <option value="live">Live TV</option>
+                        {existingCustomKinds.map((k) => (
+                          <option key={k} value={k}>
+                            Custom: {k.charAt(0).toUpperCase() + k.slice(1).replace(/_/g, " ")}
+                          </option>
+                        ))}
+                        <option value="__custom__">+ Add Custom Type...</option>
+                      </select>
+                    )}
                   </div>
                 </div>
 
@@ -2002,7 +2083,7 @@ function ContentTab() {
                   </div>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-6 py-1">
+                <div className="flex flex-wrap items-center gap-5 py-1">
                   <label className="flex items-center gap-2 text-xs text-fg cursor-pointer">
                     <input
                       type="checkbox"
@@ -2020,6 +2101,48 @@ function ContentTab() {
                       className="rounded border-border text-accent focus:ring-accent"
                     />
                     <span>Kids Safe</span>
+                  </label>
+                  <label className="flex items-center gap-2 text-xs text-fg cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={hasBadgeInString(editingTitle.badges, "Featured")}
+                      onChange={(e) =>
+                        setEditingTitle({
+                          ...editingTitle,
+                          badges: toggleBadgeInString(editingTitle.badges, "Featured", e.target.checked),
+                        })
+                      }
+                      className="rounded border-border text-accent focus:ring-accent"
+                    />
+                    <span>Hero Billboard</span>
+                  </label>
+                  <label className="flex items-center gap-2 text-xs text-fg cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={hasBadgeInString(editingTitle.badges, "Trending")}
+                      onChange={(e) =>
+                        setEditingTitle({
+                          ...editingTitle,
+                          badges: toggleBadgeInString(editingTitle.badges, "Trending", e.target.checked),
+                        })
+                      }
+                      className="rounded border-border text-accent focus:ring-accent"
+                    />
+                    <span>Trending Now</span>
+                  </label>
+                  <label className="flex items-center gap-2 text-xs text-fg cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={hasBadgeInString(editingTitle.badges, "Top 10")}
+                      onChange={(e) =>
+                        setEditingTitle({
+                          ...editingTitle,
+                          badges: toggleBadgeInString(editingTitle.badges, "Top 10", e.target.checked),
+                        })
+                      }
+                      className="rounded border-border text-accent focus:ring-accent"
+                    />
+                    <span>Top 10 Row</span>
                   </label>
                 </div>
               </div>
@@ -2335,17 +2458,67 @@ function ContentTab() {
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-muted mb-1">Content Type</label>
-                    <select
-                      value={newTitle.kind}
-                      onChange={(e) => setNewTitle({ ...newTitle, kind: e.target.value })}
-                      className="w-full rounded-lg bg-elevated px-2.5 py-2 text-sm text-fg border border-border focus:outline-none"
-                    >
-                      <option value="film">Film</option>
-                      <option value="series">Web Series</option>
-                      <option value="documentary">Documentary</option>
-                      <option value="live">Live TV</option>
-                    </select>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-xs font-medium text-muted">Content Type</label>
+                      {isCustomKindNew ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsCustomKindNew(false);
+                            setNewTitle({ ...newTitle, kind: "film" });
+                          }}
+                          className="text-[11px] text-accent hover:underline font-medium"
+                        >
+                          Use Presets
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsCustomKindNew(true);
+                            setNewTitle({ ...newTitle, kind: "" });
+                          }}
+                          className="text-[11px] text-accent hover:underline font-medium"
+                        >
+                          + Custom Type
+                        </button>
+                      )}
+                    </div>
+                    {isCustomKindNew ? (
+                      <input
+                        type="text"
+                        required
+                        placeholder="e.g. short_film, podcast, anime, event"
+                        value={newTitle.kind}
+                        onChange={(e) => setNewTitle({ ...newTitle, kind: e.target.value.toLowerCase().replace(/\s+/g, "_") })}
+                        className="w-full rounded-lg bg-elevated px-2.5 py-2 text-sm text-fg border border-accent focus:outline-none"
+                        autoFocus
+                      />
+                    ) : (
+                      <select
+                        value={newTitle.kind}
+                        onChange={(e) => {
+                          if (e.target.value === "__custom__") {
+                            setIsCustomKindNew(true);
+                            setNewTitle({ ...newTitle, kind: "" });
+                          } else {
+                            setNewTitle({ ...newTitle, kind: e.target.value });
+                          }
+                        }}
+                        className="w-full rounded-lg bg-elevated px-2.5 py-2 text-sm text-fg border border-border focus:outline-none"
+                      >
+                        <option value="film">Film / Movie</option>
+                        <option value="series">Web Series</option>
+                        <option value="documentary">Documentary</option>
+                        <option value="live">Live TV</option>
+                        {existingCustomKinds.map((k) => (
+                          <option key={k} value={k}>
+                            Custom: {k.charAt(0).toUpperCase() + k.slice(1).replace(/_/g, " ")}
+                          </option>
+                        ))}
+                        <option value="__custom__">+ Add Custom Type...</option>
+                      </select>
+                    )}
                   </div>
                 </div>
 
@@ -2552,7 +2725,7 @@ function ContentTab() {
                   </div>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-6 py-1">
+                <div className="flex flex-wrap items-center gap-5 py-1">
                   <label className="flex items-center gap-2 text-xs text-fg cursor-pointer">
                     <input
                       type="checkbox"
@@ -2570,6 +2743,48 @@ function ContentTab() {
                       className="rounded border-border text-accent focus:ring-accent"
                     />
                     <span>Kids Safe</span>
+                  </label>
+                  <label className="flex items-center gap-2 text-xs text-fg cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={hasBadgeInString(newTitle.badges, "Featured")}
+                      onChange={(e) =>
+                        setNewTitle({
+                          ...newTitle,
+                          badges: toggleBadgeInString(newTitle.badges, "Featured", e.target.checked),
+                        })
+                      }
+                      className="rounded border-border text-accent focus:ring-accent"
+                    />
+                    <span>Hero Billboard</span>
+                  </label>
+                  <label className="flex items-center gap-2 text-xs text-fg cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={hasBadgeInString(newTitle.badges, "Trending")}
+                      onChange={(e) =>
+                        setNewTitle({
+                          ...newTitle,
+                          badges: toggleBadgeInString(newTitle.badges, "Trending", e.target.checked),
+                        })
+                      }
+                      className="rounded border-border text-accent focus:ring-accent"
+                    />
+                    <span>Trending Now</span>
+                  </label>
+                  <label className="flex items-center gap-2 text-xs text-fg cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={hasBadgeInString(newTitle.badges, "Top 10")}
+                      onChange={(e) =>
+                        setNewTitle({
+                          ...newTitle,
+                          badges: toggleBadgeInString(newTitle.badges, "Top 10", e.target.checked),
+                        })
+                      }
+                      className="rounded border-border text-accent focus:ring-accent"
+                    />
+                    <span>Top 10 Row</span>
                   </label>
                 </div>
               </div>

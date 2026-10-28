@@ -860,30 +860,19 @@ export const api = {
     },
 
     async upload(file: File): Promise<{ success: boolean; url: string; name?: string }> {
-      try {
-        const formData = new FormData();
-        formData.append("file", file);
-        const token = getToken();
-        const res = await fetch(`${API_BASE()}/admin/upload`, {
-          method: "POST",
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-          body: formData,
-        });
-        if (!res.ok) throw new Error("Upload failed");
-        return await res.json();
-      } catch {
-        // Local FileReader fallback for zero-downtime preview
-        return new Promise((resolve) => {
-          const reader = new FileReader();
-          reader.onload = () => {
-            resolve({ success: true, url: reader.result as string, name: file.name });
-          };
-          reader.onerror = () => {
-            resolve({ success: false, url: "" });
-          };
-          reader.readAsDataURL(file);
-        });
+      const formData = new FormData();
+      formData.append("file", file);
+      const token = getToken();
+      const res = await fetch(`${API_BASE()}/admin/upload`, {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: formData,
+      });
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson.error || `Upload failed (HTTP ${res.status}: ${res.statusText})`);
       }
+      return await res.json();
     },
 
     async updateSiteDisplaySettings(settings: SiteDisplaySettings): Promise<boolean> {

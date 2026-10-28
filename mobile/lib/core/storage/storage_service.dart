@@ -2,7 +2,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class StorageService {
   static const String _tokenKey = 'armss_ott_token';
-  static const String _userKey = 'armss_ott_user';
   static const String _activeProfileKey = 'armss_ott_active_profile';
   static const String _watchlistKey = 'armss_ott_local_watchlist';
 

@@ -1,5 +1,5 @@
 export type Maturity = "U" | "PG" | "13+" | "16+" | "18+" | "A";
-export type TitleKind = "film" | "series" | "documentary" | "live";
+export type TitleKind = "film" | "series" | "documentary" | "live" | (string & {});
 export type Badge = "4K" | "HDR" | "Atmos" | "IMAX" | "AD" | "CC" | "Tamil" | "Telugu" | "Hindi";
 export type Language = "Tamil" | "Telugu" | "Hindi" | "English" | "Multi";
 export type Tone =
@@ -174,10 +174,10 @@ export function syncBackendTitles(backendTitles: any[]): Title[] {
           ? Math.max(1, ...bt.episodes.map((ep: any) => ep.season_number || ep.season || 1))
           : existing?.seasons,
         comingSoon: existing?.comingSoon,
-        featured: existing?.featured ?? (!existing ? true : false),
-        rank: existing?.rank,
-        trending: existing?.trending ?? (!existing ? true : false),
-        fresh: existing?.fresh ?? (!existing ? true : false),
+        featured: badges.some((b: string) => b.trim().toLowerCase() === "featured") || (existing?.featured ?? false),
+        rank: badges.some((b: string) => b.trim().toLowerCase() === "top 10") ? (existing?.rank ?? 1) : existing?.rank,
+        trending: badges.some((b: string) => b.trim().toLowerCase() === "trending") || (existing?.trending ?? false),
+        fresh: badges.some((b: string) => ["fresh", "new"].includes(b.trim().toLowerCase())) || (existing?.fresh ?? true),
         similar: existing?.similar || [],
       };
 

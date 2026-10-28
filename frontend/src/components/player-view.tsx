@@ -305,8 +305,13 @@ export function PlayerView({
     // Resolve absolute URL if relative
     let resolvedUrl = videoSrc;
     if (resolvedUrl.startsWith("/")) {
-      const apiHost = (import.meta.env.VITE_API_BASE_URL || "http://localhost:8081/api").replace(/\/api\/?$/, "");
-      resolvedUrl = `${apiHost}${resolvedUrl}`;
+      const customApi = import.meta.env.VITE_API_BASE_URL;
+      if (customApi && !customApi.startsWith("/")) {
+        const apiHost = customApi.replace(/\/api\/?$/, "");
+        resolvedUrl = `${apiHost}${resolvedUrl}`;
+      } else if (typeof window !== "undefined") {
+        resolvedUrl = `${window.location.origin}${resolvedUrl}`;
+      }
     }
 
     const isHlsStream = resolvedUrl.includes(".m3u8");
@@ -423,8 +428,13 @@ export function PlayerView({
             .then((freshTicket) => {
               let freshUrl = freshTicket.manifestUrl;
               if (freshUrl.startsWith("/")) {
-                const apiHost = (import.meta.env.VITE_API_BASE_URL || "http://localhost:8081/api").replace(/\/api\/?$/, "");
-                freshUrl = `${apiHost}${freshUrl}`;
+                const customApi = import.meta.env.VITE_API_BASE_URL;
+                if (customApi && !customApi.startsWith("/")) {
+                  const apiHost = customApi.replace(/\/api\/?$/, "");
+                  freshUrl = `${apiHost}${freshUrl}`;
+                } else if (typeof window !== "undefined") {
+                  freshUrl = `${window.location.origin}${freshUrl}`;
+                }
               }
               setTicketStream(freshUrl);
               hls.loadSource(freshUrl);

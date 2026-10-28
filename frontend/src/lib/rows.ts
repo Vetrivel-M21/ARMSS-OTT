@@ -77,6 +77,29 @@ export function homeRows(
       )
     : [];
 
+  // Smart cross-row deduplication tracker to prevent repeating the same title in 5+ rows
+  const seenCount = new Map<string, number>();
+
+  const takeFresh = (items: Title[], n = 12): Title[] => {
+    if (!items || items.length === 0) return [];
+
+    // Sort items so ones seen fewer times across previous rows appear first
+    const sorted = [...items].sort((a, b) => {
+      const cA = seenCount.get(a.id) ?? 0;
+      const cB = seenCount.get(b.id) ?? 0;
+      return cA - cB;
+    });
+
+    // Exclude titles already shown in 2+ previous discovery rows if enough fresh titles exist
+    const freshOnly = sorted.filter((t) => (seenCount.get(t.id) ?? 0) < 2);
+    const chosen = (freshOnly.length >= Math.min(3, items.length) ? freshOnly : sorted).slice(0, n);
+
+    for (const item of chosen) {
+      seenCount.set(item.id, (seenCount.get(item.id) ?? 0) + 1);
+    }
+    return chosen;
+  };
+
   const take = (items: Title[], n = 12) => items.slice(0, n);
 
   if (profile === "kids") {
@@ -85,35 +108,47 @@ export function homeRows(
       rows: [
         ...(navVisibility?.myList === false ? [] : [{ id: "continue", heading: "Continue watching", items: continueItems }]),
         ...(navVisibility?.myList === false ? [] : [{ id: "list", heading: "My List", items: list }]),
-        { id: "fresh", heading: "New on ARMSS Kids", items: fresh },
-        { id: "adv", heading: "Tamil Adventures", items: pool },
-        { id: "nature", heading: "Nature & Wildlife", items: docs },
+        { id: "fresh", heading: "New on ARMSS Kids", items: takeFresh(fresh) },
+        { id: "adv", heading: "Tamil Adventures", items: takeFresh(pool) },
+        { id: "nature", heading: "Nature & Wildlife", items: takeFresh(docs) },
       ].filter((r) => r.items.length > 0),
     };
   }
 
+  // Pre-register top 10 titles to prevent immediately repeating them in following rows
+  for (const t of top10) {
+    seenCount.set(t.id, (seenCount.get(t.id) ?? 0) + 1);
+  }
+
+  const dramaList = pool.filter((t) =>
+    t.genres.some((g) => ["drama", "social", "legal drama", "romance"].includes(g.toLowerCase())),
+  );
+  const actionList = pool.filter((t) =>
+    t.genres.some((g) => ["action", "blockbuster", "adventure"].includes(g.toLowerCase())),
+  );
+
   const rows: RowDef[] = [
     ...(navVisibility?.myList === false ? [] : [{ id: "continue", heading: "Continue watching", items: continueItems }]),
     { id: "top", heading: "Top 10 on ARMSS Today", items: top10, ranked: true },
-    { id: "trend", heading: "Trending Now", items: take(trending) },
+    { id: "trend", heading: "Trending Now", items: takeFresh(trending) },
     {
       id: "because",
-      heading: last ? `Because you watched ${last.title}` : "Recommended",
-      items: take(because, 10),
+      heading: last ? `Because you watched ${last.title}` : "Recommended for You",
+      items: takeFresh(because, 10),
     },
-    { id: "fresh", heading: "New & Noteworthy", items: take(fresh) },
+    { id: "fresh", heading: "New & Noteworthy", items: takeFresh(fresh) },
     ...(navVisibility?.films === false ? [] : [
-      { id: "blockbusters", heading: "Tamil Blockbusters", items: take(pool.filter(t => t.kind === "film" && t.genres.includes("Action"))) },
-      { id: "award", heading: "Award-winning Films", items: take(pool.filter(t => t.genres.includes("Social") || t.genres.includes("Legal Drama") || t.genres.includes("Drama")).slice(0, 10)) },
+      { id: "blockbusters", heading: "Tamil Blockbusters", items: takeFresh(actionList) },
     ]),
-    { id: "orig", heading: "Only on ARMSS", items: take(originals) },
+    { id: "orig", heading: "Only on ARMSS", items: takeFresh(originals) },
     ...(navVisibility?.live === false ? [] : [{ id: "live", heading: "Live Now", items: live }]),
-    ...(navVisibility?.series === false ? [] : [{ id: "series", heading: "Binge-worthy Web Series", items: take(series) }]),
-    { id: "thrill", heading: "Edge-of-your-seat Thrillers", items: take(thrillers) },
-    { id: "drama", heading: "Drama", items: take(dramas) },
-    { id: "scifi", heading: "Action & Blockbusters", items: take(scifi) },
-    ...(navVisibility?.films === false ? [] : [{ id: "films", heading: "Films", items: take(films) }]),
-    { id: "docs", heading: "Documentaries", items: docs },
+    ...(navVisibility?.series === false ? [] : [{ id: "series", heading: "Binge-worthy Web Series", items: takeFresh(series) }]),
+    { id: "thrill", heading: "Edge-of-your-seat Thrillers", items: takeFresh(thrillers) },
+    { id: "drama", heading: "Drama & Acclaimed Stories", items: takeFresh(dramaList) },
+    ...(navVisibility?.films === false ? [] : [
+      { id: "films", heading: "Featured Films", items: takeFresh(films) },
+    ]),
+    { id: "docs", heading: "Documentaries", items: takeFresh(docs) },
     ...(navVisibility?.myList === false ? [] : [{ id: "list", heading: "My List", items: list }]),
     ...(navVisibility?.comingSoon === false ? [] : [{ id: "soon", heading: "Coming Soon", items: soon }]),
   ];

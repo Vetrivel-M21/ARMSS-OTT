@@ -124,8 +124,8 @@ func createTables(driver string) error {
 		match_percent INT NOT NULL,
 		logline TEXT NOT NULL,
 		synopsis TEXT NOT NULL,
-		poster TEXT NOT NULL,
-		backdrop TEXT NOT NULL,
+		poster MEDIUMTEXT NOT NULL,
+		backdrop MEDIUMTEXT NOT NULL,
 		trailer TEXT,
 		video_url TEXT,
 		tone VARCHAR(50) NOT NULL,
@@ -272,9 +272,9 @@ func runMigrations(driver string) {
 		addColumnIfNotExists(DB, "titles", "trailer", "TEXT NULL")
 		addColumnIfNotExists(DB, "episodes", "video_url", "TEXT NOT NULL")
 		addColumnIfNotExists(DB, "episodes", "thumbnail_url", "TEXT NULL")
-		_, _ = DB.Exec("ALTER TABLE titles MODIFY COLUMN poster TEXT NOT NULL")
-		_, _ = DB.Exec("ALTER TABLE titles MODIFY COLUMN backdrop TEXT NOT NULL")
-		_, _ = DB.Exec("ALTER TABLE titles MODIFY COLUMN trailer TEXT NULL")
+		_, _ = DB.Exec("ALTER TABLE titles MODIFY COLUMN poster MEDIUMTEXT NOT NULL")
+		_, _ = DB.Exec("ALTER TABLE titles MODIFY COLUMN backdrop MEDIUMTEXT NOT NULL")
+		_, _ = DB.Exec("ALTER TABLE titles MODIFY COLUMN trailer MEDIUMTEXT NULL")
 		_, _ = DB.Exec("ALTER TABLE titles MODIFY COLUMN title VARCHAR(255) NOT NULL")
 		_, _ = DB.Exec("ALTER TABLE titles MODIFY COLUMN maturity VARCHAR(20) NOT NULL")
 		_, _ = DB.Exec("ALTER TABLE titles MODIFY COLUMN tone VARCHAR(50) NOT NULL")
