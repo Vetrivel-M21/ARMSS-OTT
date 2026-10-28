@@ -230,15 +230,9 @@ func AdminGetTopWatchedTitles(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Fallback mock top items if watch_progress is empty
-	if len(topList) == 0 {
-		topList = []models.TopWatchedTitle{
-			{TitleID: "vikram", Title: "Vikram (2022)", Poster: "https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=600&auto=format&fit=crop&q=80", Kind: "film", TotalWatchHours: 142.5, ViewerCount: 48, CompletionRate: 88.5},
-			{TitleID: "jailer", Title: "Jailer (2023)", Poster: "https://images.unsplash.com/photo-1485846234645-a62644f84728?w=600&auto=format&fit=crop&q=80", Kind: "film", TotalWatchHours: 118.2, ViewerCount: 39, CompletionRate: 82.0},
-			{TitleID: "leo", Title: "Leo: Bloody Sweet", Poster: "https://images.unsplash.com/photo-1518676590629-3dcbd9c5a5c9?w=600&auto=format&fit=crop&q=80", Kind: "film", TotalWatchHours: 96.4, ViewerCount: 34, CompletionRate: 76.5},
-			{TitleID: "ponniyin-selvan", Title: "Ponniyin Selvan I", Poster: "https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=600&auto=format&fit=crop&q=80", Kind: "film", TotalWatchHours: 85.0, ViewerCount: 29, CompletionRate: 91.2},
-			{TitleID: "suzhal", Title: "Suzhal: The Vortex", Poster: "https://images.unsplash.com/photo-1478760329108-5c3ed9d495a0?w=600&auto=format&fit=crop&q=80", Kind: "series", TotalWatchHours: 64.8, ViewerCount: 22, CompletionRate: 68.0},
-		}
+	// When watch_progress is empty, return an empty list rather than fake placeholder titles
+	if topList == nil {
+		topList = []models.TopWatchedTitle{}
 	}
 
 	w.Header().Set("Content-Type", "application/json")

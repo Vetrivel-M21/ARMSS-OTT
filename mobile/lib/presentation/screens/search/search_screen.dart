@@ -17,14 +17,12 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   final TextEditingController _searchController = TextEditingController();
 
   final List<String> _popularSearches = [
-    'Vikram',
-    'Ponniyin Selvan',
-    'Master',
-    'Lokesh Kanagaraj',
-    'Rajinikanth',
-    'Mani Ratnam',
-    'Suriya',
-    'Sun TV',
+    'Action',
+    'Trending Now',
+    'Series',
+    'New Releases',
+    'Live TV',
+    'Blockbusters',
   ];
 
   final List<String> _genres = [

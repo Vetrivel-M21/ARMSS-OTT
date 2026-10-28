@@ -2008,7 +2008,7 @@ function ContentTab() {
                     </div>
                     <input
                       type="text"
-                      placeholder="/posters/vikram.jpg or /uploads/..."
+                      placeholder="/uploads/posters/poster.jpg or https://..."
                       value={editingTitle.poster}
                       onChange={(e) => setEditingTitle({ ...editingTitle, poster: e.target.value })}
                       className="w-full rounded-lg bg-elevated px-3 py-1.5 text-xs text-fg border border-border focus:outline-none"
@@ -2025,7 +2025,7 @@ function ContentTab() {
                     </div>
                     <input
                       type="text"
-                      placeholder="/backdrops/vikram.jpg or /uploads/..."
+                      placeholder="/uploads/backdrops/backdrop.jpg or https://..."
                       value={editingTitle.backdrop}
                       onChange={(e) => setEditingTitle({ ...editingTitle, backdrop: e.target.value })}
                       className="w-full rounded-lg bg-elevated px-3 py-1.5 text-xs text-fg border border-border focus:outline-none"
@@ -2451,7 +2451,7 @@ function ContentTab() {
                     <input
                       type="text"
                       required
-                      placeholder="e.g. Leo, Vikram 2, Thug Life"
+                      placeholder="e.g. Inception, Breaking Bad, The Dark Knight"
                       value={newTitle.title}
                       onChange={(e) => setNewTitle({ ...newTitle, title: e.target.value })}
                       className="w-full rounded-lg bg-elevated px-3 py-2 text-sm text-fg border border-border focus:outline-none focus:border-accent"

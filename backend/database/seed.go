@@ -2,7 +2,6 @@ package database
 
 import (
 	"log"
-	"strings"
 	"time"
 
 	"armss-ott-backend/models"
@@ -85,93 +84,20 @@ func SeedDatabase() {
 		_, _ = DB.Exec("UPDATE users SET password_hash = ?, is_admin = true WHERE email = ?", string(adminHash), "admin@armss.com")
 	}
 
-	// 2. Seed Initial Demo Titles ONLY on brand new fresh install
-	// If the database already has users or titles, do NOT re-insert demo titles so user deletions are respected
-	if userCount == 0 {
-		var titlesCount int
-		_ = DB.QueryRow("SELECT COUNT(*) FROM titles").Scan(&titlesCount)
-		if titlesCount == 0 {
-			titles := []struct {
-				ID           string
-				Title        string
-				Kind         string
-				Year         int
-				Maturity     string
-				RuntimeMin   int
-				MatchPercent int
-				Logline      string
-				Synopsis     string
-				Poster       string
-				Backdrop     string
-				Trailer      string
-				Tone         string
-				Original     bool
-				Kids         bool
-				Tier         models.SubscriptionTier
-				Genres       []string
-				Badges       []string
-			}{
-				{
-					ID:           "vikram",
-					Title:        "Vikram",
-					Kind:         "film",
-					Year:         2022,
-					Maturity:     "A",
-					RuntimeMin:   174,
-					MatchPercent: 99,
-					Logline:      "A special agent is sent to investigate a series of masked killings and uncovers a drug cartel conspiracy.",
-					Synopsis:     "Kamal Haasan stars as agent Vikram in Lokesh Kanagaraj's blockbuster action universe thriller.",
-					Poster:       "/posters/vikram.jpg",
-					Backdrop:     "/backdrops/vikram.jpg",
-					Trailer:      "/trailers/vikram.mp4",
-					Tone:         "ember",
-					Original:     true,
-					Kids:         false,
-					Tier:         models.TierPremium,
-					Genres:       []string{"Action", "Thriller"},
-					Badges:       []string{"4K UHD", "HDR10", "Dolby Atmos"},
-				},
-				{
-					ID:           "master",
-					Title:        "Master",
-					Kind:         "film",
-					Year:         2021,
-					Maturity:     "A",
-					RuntimeMin:   179,
-					MatchPercent: 97,
-					Logline:      "A college professor squares off against a ruthless gangster in a juvenile detention centre.",
-					Synopsis:     "Thalapathy Vijay and Vijay Sethupathi in an explosive battle of wits and power.",
-					Poster:       "/posters/master.jpg",
-					Backdrop:     "/backdrops/master.jpg",
-					Trailer:      "/trailers/master.mp4",
-					Tone:         "velvet",
-					Original:     true,
-					Kids:         false,
-					Tier:         models.TierPremium,
-					Genres:       []string{"Action", "Drama", "Thriller"},
-					Badges:       []string{"4K UHD", "Dolby Vision"},
-				},
-			}
-
-			for _, t := range titles {
-				_, err := DB.Exec(
-					`INSERT INTO titles (id, title, kind, year, maturity, runtime_min, match_percent, logline, synopsis, poster, backdrop, trailer, tone, original, kids, required_tier, genres, badges) 
-					VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-					t.ID, t.Title, t.Kind, t.Year, t.Maturity, t.RuntimeMin, t.MatchPercent, t.Logline, t.Synopsis, t.Poster, t.Backdrop, t.Trailer, t.Tone, t.Original, t.Kids, string(t.Tier), strings.Join(t.Genres, ","), strings.Join(t.Badges, ","),
-				)
-				if err != nil {
-					log.Printf("[ARMSS-OTT] Error inserting title %s: %v", t.ID, err)
-				}
-			}
-		}
-	}
-
-	seedUserActivityAndWatchProgress()
+	// Titles are managed entirely by administrators via the Admin dashboard.
+	// No demo titles (vikram, master) are pre-seeded to prevent recreating deleted items on restart.
 
 	log.Println("[ARMSS-OTT] Seed complete! Demo: free/standard/premium/admin @armss.com (Password: armss123)")
 }
 
 func seedUserActivityAndWatchProgress() {
+	// Sample watch progress is only seeded if real titles exist in database
+	var titleCount int
+	_ = DB.QueryRow("SELECT COUNT(*) FROM titles").Scan(&titleCount)
+	if titleCount == 0 {
+		return
+	}
+
 	var count int
 	_ = DB.QueryRow("SELECT COUNT(*) FROM watch_progress").Scan(&count)
 	if count > 0 {
@@ -205,10 +131,8 @@ func seedUserActivityAndWatchProgress() {
 	}
 
 	samples := []sampleWatch{
-		{"premium@armss.com", "vikram", 96.5, 9840, 1},
 		{"premium@armss.com", "jailer", 100.0, 9600, 2},
 		{"premium@armss.com", "leo", 75.0, 7200, 3},
-		{"standard@armss.com", "vikram", 88.0, 8900, 1},
 		{"standard@armss.com", "sarpatta", 92.5, 9600, 4},
 		{"standard@armss.com", "suzhal", 65.0, 4800, 5},
 		{"free@armss.com", "sun-tv-live", 100.0, 3600, 0},
@@ -219,6 +143,11 @@ func seedUserActivityAndWatchProgress() {
 	for _, s := range samples {
 		uID, ok := userMap[s.email]
 		if !ok {
+			continue
+		}
+		var exists int
+		_ = DB.QueryRow("SELECT COUNT(*) FROM titles WHERE id = ?", s.titleID).Scan(&exists)
+		if exists == 0 {
 			continue
 		}
 		updatedAt := now.AddDate(0, 0, -s.daysAgo)

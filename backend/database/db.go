@@ -286,6 +286,13 @@ func runMigrations(driver string) {
 
 	// Additive plan-based access control migrations
 	runPlanAccessMigrations(driver)
+
+	// Clean up legacy demo records (vikram and master) so they don't linger in existing databases
+	_, _ = DB.Exec("DELETE FROM watch_progress WHERE title_id IN ('vikram', 'master')")
+	_, _ = DB.Exec("DELETE FROM watchlist WHERE title_id IN ('vikram', 'master')")
+	_, _ = DB.Exec("DELETE FROM ratings WHERE title_id IN ('vikram', 'master')")
+	_, _ = DB.Exec("DELETE FROM episodes WHERE title_id IN ('vikram', 'master')")
+	_, _ = DB.Exec("DELETE FROM titles WHERE id IN ('vikram', 'master')")
 }
 
 func addColumnIfNotExists(db *sql.DB, tableName, columnName, columnDef string) {
