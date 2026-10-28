@@ -113,9 +113,11 @@ class CatalogRepository {
     return titles.where((t) {
       final inTitle = t.title.toLowerCase().contains(q);
       final inGenre = t.genres.any((g) => g.toLowerCase().contains(q));
+      final inKind = t.kind.toLowerCase().contains(q) ||
+          t.kind.replaceAll('_', ' ').toLowerCase().contains(q);
       final inCast = t.cast.any((c) => c.name.toLowerCase().contains(q));
       final inDirector = (t.director ?? '').toLowerCase().contains(q);
-      return inTitle || inGenre || inCast || inDirector;
+      return inTitle || inGenre || inKind || inCast || inDirector;
     }).toList();
   }
 

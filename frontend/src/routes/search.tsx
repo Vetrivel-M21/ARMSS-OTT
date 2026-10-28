@@ -40,11 +40,34 @@ function SearchPage() {
   }, [value, navigate]);
 
   const catalogVersion = useAether((s) => s.catalogVersion);
+  const [selectedType, setSelectedType] = useState<string>("all");
+
+  const TYPE_FILTERS = [
+    { id: "all", label: "All Content" },
+    { id: "film", label: "Films" },
+    { id: "series", label: "Web Series" },
+    { id: "short_film", label: "Short Films" },
+    { id: "documentary", label: "Documentaries" },
+    { id: "standup", label: "Stand-up Comedy" },
+  ];
 
   const results = useMemo(
     () => searchTitles(value, profile),
     [value, profile, catalogVersion],
   );
+
+  const filteredResults = useMemo(() => {
+    if (selectedType === "all") return results;
+    return results.filter((t) => {
+      if (selectedType === "short_film") {
+        return t.kind === "short_film" || t.kind === "short film";
+      }
+      if (selectedType === "standup") {
+        return t.kind === "standup" || t.kind === "stand_up";
+      }
+      return t.kind === selectedType;
+    });
+  }, [results, selectedType]);
 
   const commit = (term: string) => {
     setValue(term);
@@ -63,7 +86,7 @@ function SearchPage() {
           onKeyDown={(e) => {
             if (e.key === "Enter") commit(value);
           }}
-          placeholder="Search Tamil films, web series, directors, actors..."
+          placeholder="Search Tamil films, short films, web series, directors, actors..."
           className="h-14 w-full rounded-2xl border border-white/10 bg-elevated/90 pl-12 pr-12 text-base text-fg shadow-xl outline-none placeholder:text-subtle focus:border-accent/40 focus:ring-1 focus:ring-accent/40 backdrop-blur-md transition-all"
         />
         {value ? (
@@ -77,6 +100,25 @@ function SearchPage() {
           </button>
         ) : null}
       </label>
+
+      {/* Content Type Filter Pills */}
+      <div className="flex items-center gap-2 mt-4 overflow-x-auto pb-1 scrollbar-none">
+        {TYPE_FILTERS.map((tf) => (
+          <button
+            key={tf.id}
+            type="button"
+            onClick={() => setSelectedType(tf.id)}
+            className={cn(
+              "rounded-full px-4 py-1.5 text-xs font-semibold whitespace-nowrap transition-all border",
+              selectedType === tf.id
+                ? "bg-accent text-white border-accent shadow-sm shadow-accent/20"
+                : "bg-elevated/80 text-muted border-white/10 hover:border-white/25 hover:text-fg hover:bg-white/10",
+            )}
+          >
+            {tf.label}
+          </button>
+        ))}
+      </div>
 
       {!value ? (
         <div className="mt-8">
@@ -117,17 +159,20 @@ function SearchPage() {
         <div className="mt-8">
           <div className="flex items-center justify-between border-b border-white/10 pb-4 mb-6">
             <p className="text-sm font-medium text-muted">
-              Found <span className="text-fg font-bold">{results.length}</span> {results.length === 1 ? "result" : "results"} for &ldquo;<span className="text-accent">{value}</span>&rdquo;
+              Found <span className="text-fg font-bold">{filteredResults.length}</span> {filteredResults.length === 1 ? "result" : "results"} for &ldquo;<span className="text-accent">{value}</span>&rdquo;
+              {selectedType !== "all" && (
+                <span className="ml-2 text-xs text-accent">({TYPE_FILTERS.find((f) => f.id === selectedType)?.label})</span>
+              )}
             </p>
           </div>
-          {results.length === 0 ? (
+          {filteredResults.length === 0 ? (
             <div className="mt-12 rounded-2xl border border-white/10 bg-elevated/40 p-8 text-center max-w-md mx-auto">
               <p className="text-base font-semibold text-fg">No matches found</p>
-              <p className="mt-1 text-sm text-muted">Try searching with a different actor name, movie title, or genre.</p>
+              <p className="mt-1 text-sm text-muted">Try searching with a different title, actor name, or select "All Content".</p>
             </div>
           ) : (
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 sm:gap-6">
-              {results.map((t) => (
+              {filteredResults.map((t) => (
                 <TitleCard key={t.id} title={t} size="fill" />
               ))}
             </div>

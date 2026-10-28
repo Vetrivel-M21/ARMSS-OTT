@@ -62,6 +62,9 @@ export function homeRows(
   const films = navVisibility?.films === false ? [] : pool.filter((t) => t.kind === "film");
   const series = navVisibility?.series === false ? [] : pool.filter((t) => t.kind === "series");
   const docs = pool.filter((t) => t.kind === "documentary");
+  const shortFilms = pool.filter((t) => t.kind === "short_film" || t.kind === "short film");
+  const standup = pool.filter((t) => t.kind === "standup" || t.kind === "stand_up");
+  const musicVideos = pool.filter((t) => t.kind === "music_video" || t.kind === "music video");
   const thrillers = pool.filter((t) => t.genres.includes("Thriller"));
   const dramas = pool.filter((t) => t.genres.includes("Drama"));
   const scifi = pool.filter((t) => t.genres.includes("Sci-Fi"));
@@ -77,23 +80,17 @@ export function homeRows(
       )
     : [];
 
-  // Smart cross-row deduplication tracker to prevent repeating the same title in 5+ rows
+  // Strict cross-row deduplication tracker to prevent repeating the same title in multiple discovery rows
   const seenCount = new Map<string, number>();
 
   const takeFresh = (items: Title[], n = 12): Title[] => {
     if (!items || items.length === 0) return [];
 
-    // Sort items so ones seen fewer times across previous rows appear first
-    const sorted = [...items].sort((a, b) => {
-      const cA = seenCount.get(a.id) ?? 0;
-      const cB = seenCount.get(b.id) ?? 0;
-      return cA - cB;
-    });
+    // Strictly filter out any title that has already appeared in an earlier discovery row
+    const freshOnly = items.filter((t) => (seenCount.get(t.id) ?? 0) === 0);
+    if (freshOnly.length === 0) return [];
 
-    // Exclude titles already shown in 2+ previous discovery rows if enough fresh titles exist
-    const freshOnly = sorted.filter((t) => (seenCount.get(t.id) ?? 0) < 2);
-    const chosen = (freshOnly.length >= Math.min(3, items.length) ? freshOnly : sorted).slice(0, n);
-
+    const chosen = freshOnly.slice(0, n);
     for (const item of chosen) {
       seenCount.set(item.id, (seenCount.get(item.id) ?? 0) + 1);
     }
@@ -140,9 +137,18 @@ export function homeRows(
     ...(navVisibility?.films === false ? [] : [
       { id: "blockbusters", heading: "Tamil Blockbusters", items: takeFresh(actionList) },
     ]),
+    ...(shortFilms.length > 0 ? [
+      { id: "short_films", heading: "Spotlight on Short Films", items: takeFresh(shortFilms) },
+    ] : []),
     { id: "orig", heading: "Only on ARMSS", items: takeFresh(originals) },
     ...(navVisibility?.live === false ? [] : [{ id: "live", heading: "Live Now", items: live }]),
     ...(navVisibility?.series === false ? [] : [{ id: "series", heading: "Binge-worthy Web Series", items: takeFresh(series) }]),
+    ...(standup.length > 0 ? [
+      { id: "standup", heading: "Stand-up Comedy & Specials", items: takeFresh(standup) },
+    ] : []),
+    ...(musicVideos.length > 0 ? [
+      { id: "music_videos", heading: "Music Videos & Concerts", items: takeFresh(musicVideos) },
+    ] : []),
     { id: "thrill", heading: "Edge-of-your-seat Thrillers", items: takeFresh(thrillers) },
     { id: "drama", heading: "Drama & Acclaimed Stories", items: takeFresh(dramaList) },
     ...(navVisibility?.films === false ? [] : [
@@ -179,6 +185,18 @@ export function browseCollection(slug: string, profile: ProfileId, navVisibility
     return {
       heading: "Documentaries",
       items: pool.filter((t) => t.kind === "documentary"),
+    };
+  }
+  if (s === "short_film" || s === "short-film" || s === "short film" || s === "short_films" || s === "shortfilms") {
+    return {
+      heading: "Short Films",
+      items: pool.filter((t) => t.kind === "short_film" || t.kind === "short film"),
+    };
+  }
+  if (s === "standup" || s === "stand_up" || s === "comedy") {
+    return {
+      heading: "Stand-up Comedy",
+      items: pool.filter((t) => t.kind === "standup" || t.kind === "stand_up"),
     };
   }
   const heading = s.charAt(0).toUpperCase() + s.slice(1);

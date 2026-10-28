@@ -114,10 +114,12 @@ services:
       - ENABLE_WORKER=false
       - UPLOADS_DIR=/app/armss_ott_uploads
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-*}
+      - SQLITE_PATH=/app/data/armss_ott.db
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-91550463965-0lmm9iu9h5fes5i3lh7qhme986s4va6u.apps.googleusercontent.com}
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-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}
     volumes:
       - armss_ott_uploads_data:/app/armss_ott_uploads
+      - armss_ott_sqlite_data:/app/data
     depends_on:
       mysql:
         condition: service_healthy
@@ -203,6 +205,8 @@ volumes:
     name: armss_ott_seaweedfs_data
   armss_ott_uploads_data:
     name: armss_ott_uploads_data
+  armss_ott_sqlite_data:
+    name: armss_ott_sqlite_data
 
 networks:
   armss_ott_network:

@@ -1463,10 +1463,21 @@ function ContentTab() {
   const [isCustomKindNew, setIsCustomKindNew] = useState(false);
   const [isCustomKindEdit, setIsCustomKindEdit] = useState(false);
 
+  const STANDARD_KINDS = [
+    { value: "film", label: "Film / Movie" },
+    { value: "series", label: "Web Series" },
+    { value: "short_film", label: "Short Film" },
+    { value: "documentary", label: "Documentary" },
+    { value: "standup", label: "Stand-up Comedy" },
+    { value: "music_video", label: "Music Video" },
+    { value: "live", label: "Live TV" },
+  ];
+
   const existingCustomKinds = useMemo(() => {
+    const stdValues = new Set(STANDARD_KINDS.map((k) => k.value));
     const set = new Set<string>();
     titles.forEach((t: any) => {
-      if (t.kind && !["film", "series", "documentary", "live"].includes(t.kind)) {
+      if (t.kind && !stdValues.has(t.kind)) {
         set.add(t.kind);
       }
     });
@@ -1553,7 +1564,8 @@ function ContentTab() {
       badges: badgesStr,
     });
     setEditingEpisodeForm(null);
-    const isCustom = !["film", "series", "documentary", "live"].includes(t.kind || "film");
+    const stdValues = new Set(["film", "series", "short_film", "documentary", "standup", "music_video", "live"]);
+    const isCustom = !stdValues.has(t.kind || "film");
     setIsCustomKindEdit(isCustom);
     if ((t.kind || "film") === "series") {
       void fetchEpisodesForTitle(t.id);
@@ -1867,7 +1879,10 @@ function ContentTab() {
                       >
                         <option value="film">Film / Movie</option>
                         <option value="series">Web Series</option>
+                        <option value="short_film">Short Film</option>
                         <option value="documentary">Documentary</option>
+                        <option value="standup">Stand-up Comedy</option>
+                        <option value="music_video">Music Video</option>
                         <option value="live">Live TV</option>
                         {existingCustomKinds.map((k) => (
                           <option key={k} value={k}>
@@ -2509,7 +2524,10 @@ function ContentTab() {
                       >
                         <option value="film">Film / Movie</option>
                         <option value="series">Web Series</option>
+                        <option value="short_film">Short Film</option>
                         <option value="documentary">Documentary</option>
+                        <option value="standup">Stand-up Comedy</option>
+                        <option value="music_video">Music Video</option>
                         <option value="live">Live TV</option>
                         {existingCustomKinds.map((k) => (
                           <option key={k} value={k}>
