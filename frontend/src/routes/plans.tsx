@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { Check, Crown, HelpCircle, Shield, Sparkles, X } from "lucide-react";
 import { toast } from "sonner";
@@ -16,6 +16,20 @@ function PlansPage() {
 
   const [annual, setAnnual] = useState(false);
   const [loadingTier, setLoadingTier] = useState<SubscriptionTier | null>(null);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const urlParams = new URLSearchParams(window.location.search);
+      const email = urlParams.get("email");
+      const plan = urlParams.get("plan");
+      if (email || plan) {
+        toast.info(
+          `Connected streaming session${email ? ` for ${email}` : ""}.${plan ? ` Ready to activate ${plan.toUpperCase()}.` : ""}`,
+          { id: "session-sync" }
+        );
+      }
+    }
+  }, []);
 
   const currentTier: SubscriptionTier = user?.subscription_tier || "free";
 
@@ -59,7 +73,7 @@ function PlansPage() {
           key: checkout.key_id,
           amount: checkout.amount_inr * 100,
           currency: checkout.currency || "INR",
-          name: "ARMSS-OTT",
+          name: "Aura Pictures",
           description: `${checkout.plan_name} Subscription`,
           subscription_id:
             checkout.subscription_id?.startsWith("sub_") && !checkout.subscription_id.startsWith("sub_mock")
@@ -166,8 +180,15 @@ function PlansPage() {
           Choose the right plan for you
         </h1>
         <p className="mt-3 text-sm text-muted max-w-xl mx-auto">
-          Watch anywhere across India. Cancel anytime. All plans give you instant access to ARMSS OTT's world-class Tamil streaming library.
+          Watch anywhere across India. Cancel anytime. All plans give you instant access to Aura Pictures streaming library.
         </p>
+
+        {user ? (
+          <div className="mt-4 inline-flex items-center gap-2 rounded-full bg-emerald-500/10 border border-emerald-500/30 px-4 py-1 text-xs text-emerald-400 font-medium">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+            Active Session: <strong className="text-white">{user.email}</strong> ({user.subscription_tier.toUpperCase()})
+          </div>
+        ) : null}
 
         {/* Billing Cycle Switch */}
         <div className="mt-8 inline-flex items-center gap-3 rounded-full bg-surface p-1.5 border border-border">

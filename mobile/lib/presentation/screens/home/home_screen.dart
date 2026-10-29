@@ -10,6 +10,7 @@ import '../../../data/models/title_model.dart';
 import '../../../data/models/display_settings_model.dart';
 import '../../../providers/catalog_provider.dart';
 import '../../../providers/watchlist_provider.dart';
+import '../../../core/storage/storage_service.dart';
 import '../../common/content_rail.dart';
 import '../../common/badge_chip.dart';
 import '../../common/top_nav_bar.dart';
@@ -132,19 +133,30 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
           final featuredList = displayed.where((t) => t.featured).take(5).toList();
           final heroList = (featuredList.isNotEmpty ? featuredList : displayed).take(3).toList();
-          final trendingList = displayed.where((t) => t.trending).toList();
-          final top10List = displayed.where((t) => t.rank != null).toList()
-            ..sort((a, b) => (a.rank ?? 99).compareTo(b.rank ?? 99));
-          final originalsList = displayed.where((t) => t.original).toList();
-          final liveList = navVisibility.live
-              ? allowedTitles.where((t) => t.kind == 'live').toList()
-              : <TitleModel>[];
 
-          // Mock continue watching items
-          final continueWatching = displayed.take(2).toList();
+          // Strict cross-rail deduplication tracker to prevent repeating titles across rows
+          final seenIds = <String>{};
+
+          List<TitleModel> takeFresh(List<TitleModel> items, [int limit = 10]) {
+            if (items.isEmpty) return const [];
+            final fresh = <TitleModel>[];
+            for (final item in items) {
+              if (item.id.isNotEmpty && seenIds.add(item.id)) {
+                fresh.add(item);
+                if (fresh.length >= limit) break;
+              }
+            }
+            return fresh;
+          }
+
+          // Continue Watching: prioritize user's actual watchlist items
+          final watchlist = ref.watch(watchlistProvider);
+          final continueWatching = watchlist.isNotEmpty
+              ? watchlist.where((t) => displayed.any((d) => d.id == t.id)).take(4).toList()
+              : <TitleModel>[];
           final continueProgress = {
-            if (continueWatching.isNotEmpty) continueWatching[0].id: 0.65,
-            if (continueWatching.length > 1) continueWatching[1].id: 0.30,
+            for (var i = 0; i < continueWatching.length; i++)
+              continueWatching[i].id: (i == 0 ? 0.65 : (i == 1 ? 0.35 : 0.80)),
           };
 
           final topNavClearance = MediaQuery.of(context).padding.top + 115.0;
@@ -190,67 +202,126 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                         ),
                       ),
 
-                    // ── Category Specific Rails ──
+                    // ── Category Specific Rails (Deduplicated) ──
                     if (_selectedCategory == 'Series') ...[
-                      // Trending Series
-                      if (trendingList.isNotEmpty)
-                        ContentRail(
-                          title: 'Trending Web Series',
-                          items: trendingList,
-                          onTitleTap: _onTitleTap,
-                        ),
-                      // Top Rated Series
-                      if (top10List.isNotEmpty)
-                        ContentRail(
-                          title: 'Top Rated Series',
-                          items: top10List,
-                          isTop10: true,
-                          onTitleTap: _onTitleTap,
-                        ),
-                      // ARMSS Original Series
-                      if (originalsList.isNotEmpty)
-                        ContentRail(
-                          title: 'ARMSS Originals',
-                          items: originalsList,
-                          onTitleTap: _onTitleTap,
-                        ),
-                      // All Series rail (always shows all series items)
-                      if (displayed.isNotEmpty)
-                        ContentRail(
-                          title: 'All Series & Seasons',
-                          items: displayed,
-                          onTitleTap: _onTitleTap,
-                        ),
+                      () {
+                        final topSeries = (displayed.where((t) => t.rank != null).toList()
+                          ..sort((a, b) => (a.rank ?? 99).compareTo(b.rank ?? 99))).take(10).toList();
+                        for (final t in topSeries) {
+                          seenIds.add(t.id);
+                        }
+                        final trendingSeries = takeFresh(displayed.where((t) => t.trending).toList());
+                        final originalsSeries = takeFresh(displayed.where((t) => t.original).toList());
+                        final thrillersSeries = takeFresh(displayed.where((t) => t.genres.any((g) => ['crime', 'mystery', 'thriller'].contains(g.toLowerCase()))).toList());
+                        final dramaSeries = takeFresh(displayed.where((t) => t.genres.any((g) => ['drama', 'social', 'comedy'].contains(g.toLowerCase()))).toList());
+                        final moreSeries = takeFresh(displayed);
+
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            if (topSeries.isNotEmpty)
+                              ContentRail(
+                                title: 'Top Rated Series',
+                                items: topSeries,
+                                isTop10: true,
+                                onTitleTap: _onTitleTap,
+                              ),
+                            if (trendingSeries.isNotEmpty)
+                              ContentRail(
+                                title: 'Trending Web Series',
+                                items: trendingSeries,
+                                onTitleTap: _onTitleTap,
+                              ),
+                            if (originalsSeries.isNotEmpty)
+                              ContentRail(
+                                title: 'ARMSS Originals',
+                                items: originalsSeries,
+                                onTitleTap: _onTitleTap,
+                              ),
+                            if (thrillersSeries.isNotEmpty)
+                              ContentRail(
+                                title: 'Crime & Mystery Thrillers',
+                                items: thrillersSeries,
+                                onTitleTap: _onTitleTap,
+                              ),
+                            if (dramaSeries.isNotEmpty)
+                              ContentRail(
+                                title: 'Acclaimed Drama & Stories',
+                                items: dramaSeries,
+                                onTitleTap: _onTitleTap,
+                              ),
+                            if (moreSeries.isNotEmpty)
+                              ContentRail(
+                                title: 'More Web Series & Seasons',
+                                items: moreSeries,
+                                onTitleTap: _onTitleTap,
+                              ),
+                          ],
+                        );
+                      }(),
                     ] else if (_selectedCategory == 'Movies') ...[
-                      // Top 10 Today
-                      if (top10List.isNotEmpty)
-                        ContentRail(
-                          title: 'Top 10 Movies Today',
-                          items: top10List,
-                          isTop10: true,
-                          onTitleTap: _onTitleTap,
-                        ),
-                      // Trending Movies
-                      if (trendingList.isNotEmpty)
-                        ContentRail(
-                          title: 'Trending Blockbusters',
-                          items: trendingList,
-                          onTitleTap: _onTitleTap,
-                        ),
-                      // ARMSS Originals
-                      if (originalsList.isNotEmpty)
-                        ContentRail(
-                          title: 'ARMSS Exclusives & Originals',
-                          items: originalsList,
-                          onTitleTap: _onTitleTap,
-                        ),
-                      // All Movies
-                      if (displayed.isNotEmpty)
-                        ContentRail(
-                          title: 'All Tamil Movies',
-                          items: displayed,
-                          onTitleTap: _onTitleTap,
-                        ),
+                      () {
+                        final topMovies = (displayed.where((t) => t.rank != null).toList()
+                          ..sort((a, b) => (a.rank ?? 99).compareTo(b.rank ?? 99))).take(10).toList();
+                        for (final t in topMovies) {
+                          seenIds.add(t.id);
+                        }
+                        final trendingMovies = takeFresh(displayed.where((t) => t.trending).toList());
+                        final originalsMovies = takeFresh(displayed.where((t) => t.original).toList());
+                        final actionMovies = takeFresh(displayed.where((t) => t.genres.any((g) => ['action', 'blockbuster', 'adventure'].contains(g.toLowerCase()))).toList());
+                        final thrillersMovies = takeFresh(displayed.where((t) => t.genres.any((g) => ['thriller', 'crime', 'mystery'].contains(g.toLowerCase()))).toList());
+                        final dramaMovies = takeFresh(displayed.where((t) => t.genres.any((g) => ['drama', 'social', 'legal drama', 'romance'].contains(g.toLowerCase()))).toList());
+                        final moreMovies = takeFresh(displayed);
+
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            if (topMovies.isNotEmpty)
+                              ContentRail(
+                                title: 'Top 10 Movies Today',
+                                items: topMovies,
+                                isTop10: true,
+                                onTitleTap: _onTitleTap,
+                              ),
+                            if (trendingMovies.isNotEmpty)
+                              ContentRail(
+                                title: 'Trending Blockbusters',
+                                items: trendingMovies,
+                                onTitleTap: _onTitleTap,
+                              ),
+                            if (originalsMovies.isNotEmpty)
+                              ContentRail(
+                                title: 'ARMSS Exclusives & Originals',
+                                items: originalsMovies,
+                                onTitleTap: _onTitleTap,
+                              ),
+                            if (actionMovies.isNotEmpty)
+                              ContentRail(
+                                title: 'Tamil Action & Blockbusters',
+                                items: actionMovies,
+                                onTitleTap: _onTitleTap,
+                              ),
+                            if (thrillersMovies.isNotEmpty)
+                              ContentRail(
+                                title: 'Edge-of-Your-Seat Thrillers',
+                                items: thrillersMovies,
+                                onTitleTap: _onTitleTap,
+                              ),
+                            if (dramaMovies.isNotEmpty)
+                              ContentRail(
+                                title: 'Drama & Acclaimed Stories',
+                                items: dramaMovies,
+                                onTitleTap: _onTitleTap,
+                              ),
+                            if (moreMovies.isNotEmpty)
+                              ContentRail(
+                                title: 'More Tamil Movies',
+                                items: moreMovies,
+                                onTitleTap: _onTitleTap,
+                              ),
+                          ],
+                        );
+                      }(),
                     ] else if (_selectedCategory == 'Live TV') ...[
                       // Live Channels
                       if (displayed.isNotEmpty)
@@ -262,61 +333,145 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                           onTitleTap: _onTitleTap,
                         ),
                     ] else ...[
-                      // ── 'All' Category Default View ──
-                      // Continue Watching
-                      if (continueWatching.isNotEmpty)
-                        ContentRail(
-                          title: 'Continue Watching for Vetrivel',
-                          subtitle: 'Pick up where you left off',
-                          items: continueWatching,
-                          isBackdrop: true,
-                          progressMap: continueProgress,
-                          onTitleTap: _onTitleTap,
-                        ),
+                      // ── 'All' Category Default Deduplicated View ──
+                      () {
+                        final topAll = (displayed.where((t) => t.rank != null).toList()
+                          ..sort((a, b) => (a.rank ?? 99).compareTo(b.rank ?? 99))).take(10).toList();
+                        for (final t in topAll) {
+                          seenIds.add(t.id);
+                        }
+                        final trendingAll = takeFresh(displayed.where((t) => t.trending && t.kind != 'live').toList());
+                        final originalsAll = takeFresh(displayed.where((t) => t.original && t.kind != 'live').toList());
+                        final freshAll = takeFresh(displayed.where((t) => t.fresh && t.kind != 'live').toList());
+                        final actionAll = takeFresh(displayed.where((t) => t.genres.any((g) => ['action', 'blockbuster', 'adventure'].contains(g.toLowerCase()))).toList());
+                        final seriesAll = navVisibility.series
+                            ? takeFresh(allowedTitles.where((t) => t.kind == 'series').toList())
+                            : <TitleModel>[];
+                        final shortFilmsAll = takeFresh(allowedTitles.where((t) => t.kind == 'short_film' || t.kind == 'short film').toList());
+                        final thrillersAll = takeFresh(displayed.where((t) => t.genres.any((g) => ['thriller', 'crime', 'mystery'].contains(g.toLowerCase()))).toList());
+                        final dramaAll = takeFresh(displayed.where((t) => t.genres.any((g) => ['drama', 'social', 'legal drama', 'romance'].contains(g.toLowerCase()))).toList());
+                        final docsAll = takeFresh(allowedTitles.where((t) => t.kind == 'documentary' || t.kind == 'standup' || t.kind == 'stand_up').toList());
+                        final moreAll = takeFresh(displayed);
+                        final liveList = navVisibility.live
+                            ? allowedTitles.where((t) => t.kind == 'live').toList()
+                            : <TitleModel>[];
 
-                      // Top 10 Today
-                      if (top10List.isNotEmpty)
-                        ContentRail(
-                          title: 'Top 10 in Tamil Nadu Today',
-                          items: top10List,
-                          isTop10: true,
-                          onTitleTap: _onTitleTap,
-                        ),
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // Continue Watching (only if user has items)
+                            if (continueWatching.isNotEmpty)
+                              ContentRail(
+                                title: 'Continue Watching for ${storageService.getUserName() ?? "You"}',
+                                subtitle: 'Pick up where you left off',
+                                items: continueWatching,
+                                isBackdrop: true,
+                                progressMap: continueProgress,
+                                onTitleTap: _onTitleTap,
+                              ),
 
-                      // Trending Blockbusters
-                      if (trendingList.isNotEmpty)
-                        ContentRail(
-                          title: 'Trending Blockbusters',
-                          items: trendingList,
-                          onTitleTap: _onTitleTap,
-                        ),
+                            // Top 10 in Tamil Nadu Today
+                            if (topAll.isNotEmpty)
+                              ContentRail(
+                                title: 'Top 10 in Tamil Nadu Today',
+                                items: topAll,
+                                isTop10: true,
+                                onTitleTap: _onTitleTap,
+                              ),
 
-                      // Binge-Worthy TV Series
-                      if (navVisibility.series && allowedTitles.any((t) => t.kind == 'series'))
-                        ContentRail(
-                          title: 'Binge-Worthy TV Series',
-                          subtitle: 'Award-winning Tamil originals',
-                          items: allowedTitles.where((t) => t.kind == 'series').toList(),
-                          onTitleTap: _onTitleTap,
-                        ),
+                            // Trending Blockbusters
+                            if (trendingAll.isNotEmpty)
+                              ContentRail(
+                                title: 'Trending Blockbusters',
+                                items: trendingAll,
+                                onTitleTap: _onTitleTap,
+                              ),
 
-                      // ARMSS Originals
-                      if (originalsList.isNotEmpty)
-                        ContentRail(
-                          title: 'ARMSS Exclusives & Originals',
-                          items: originalsList,
-                          onTitleTap: _onTitleTap,
-                        ),
+                            // Fresh & New Releases
+                            if (freshAll.isNotEmpty)
+                              ContentRail(
+                                title: 'New & Noteworthy Releases',
+                                items: freshAll,
+                                onTitleTap: _onTitleTap,
+                              ),
 
-                      // Live Channels
-                      if (navVisibility.live && liveList.isNotEmpty)
-                        ContentRail(
-                          title: '24/7 Live Broadcasts',
-                          subtitle: 'Real-time channels and news',
-                          items: liveList,
-                          isBackdrop: true,
-                          onTitleTap: _onTitleTap,
-                        ),
+                            // ARMSS Originals
+                            if (originalsAll.isNotEmpty)
+                              ContentRail(
+                                title: 'ARMSS Exclusives & Originals',
+                                items: originalsAll,
+                                onTitleTap: _onTitleTap,
+                              ),
+
+                            // Action & Blockbusters
+                            if (actionAll.isNotEmpty)
+                              ContentRail(
+                                title: 'Tamil Blockbusters',
+                                items: actionAll,
+                                onTitleTap: _onTitleTap,
+                              ),
+
+                            // Short Films Spotlight
+                            if (shortFilmsAll.isNotEmpty)
+                              ContentRail(
+                                title: 'Spotlight on Short Films',
+                                items: shortFilmsAll,
+                                onTitleTap: _onTitleTap,
+                              ),
+
+                            // Binge-Worthy TV Series
+                            if (seriesAll.isNotEmpty)
+                              ContentRail(
+                                title: 'Binge-Worthy TV Series',
+                                subtitle: 'Award-winning Tamil originals',
+                                items: seriesAll,
+                                onTitleTap: _onTitleTap,
+                              ),
+
+                            // Thrillers
+                            if (thrillersAll.isNotEmpty)
+                              ContentRail(
+                                title: 'Edge-of-Your-Seat Thrillers',
+                                items: thrillersAll,
+                                onTitleTap: _onTitleTap,
+                              ),
+
+                            // Acclaimed Dramas
+                            if (dramaAll.isNotEmpty)
+                              ContentRail(
+                                title: 'Drama & Acclaimed Stories',
+                                items: dramaAll,
+                                onTitleTap: _onTitleTap,
+                              ),
+
+                            // Documentaries & Specials
+                            if (docsAll.isNotEmpty)
+                              ContentRail(
+                                title: 'Documentaries & Specials',
+                                items: docsAll,
+                                onTitleTap: _onTitleTap,
+                              ),
+
+                            // Live Channels
+                            if (liveList.isNotEmpty)
+                              ContentRail(
+                                title: '24/7 Live Broadcasts',
+                                subtitle: 'Real-time channels and news',
+                                items: liveList,
+                                isBackdrop: true,
+                                onTitleTap: _onTitleTap,
+                              ),
+
+                            // More Titles
+                            if (moreAll.isNotEmpty)
+                              ContentRail(
+                                title: 'More Titles to Explore',
+                                items: moreAll,
+                                onTitleTap: _onTitleTap,
+                              ),
+                          ],
+                        );
+                      }(),
                     ],
 
                     // Bottom padding for bottom navigation bar

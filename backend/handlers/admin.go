@@ -670,6 +670,17 @@ func GetNotification(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{"notification": latestNotification})
 }
 
+// AdminClearBroadcast — DELETE /api/admin/notifications
+// Deactivates and deletes the currently active broadcast notification.
+func AdminClearBroadcast(w http.ResponseWriter, r *http.Request) {
+	latestNotification = nil
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": "Broadcast notification deactivated successfully",
+	})
+}
+
 // AdminDeleteUser — DELETE /api/admin/users/{id}
 func AdminDeleteUser(w http.ResponseWriter, r *http.Request) {
 	userID := chi.URLParam(r, "id")

@@ -16,14 +16,24 @@ class CatalogRepository {
       final response = await apiClient.get(ApiConstants.titles);
       if (response.statusCode == 200 && response.data != null) {
         final List list = response.data is List ? response.data : (response.data['titles'] ?? []);
-        _cachedTitles = list.map((e) => TitleModel.fromJson(Map<String, dynamic>.from(e))).toList();
+        final seen = <String>{};
+        final uniqueList = <TitleModel>[];
+        for (final e in list) {
+          final t = TitleModel.fromJson(Map<String, dynamic>.from(e));
+          if (t.id.isNotEmpty && seen.add(t.id)) {
+            uniqueList.add(t);
+          }
+        }
+        _cachedTitles = uniqueList;
         return _cachedTitles!;
       }
     } catch (_) {
       // Offline or network error - gracefully fall back to local rich static catalog
     }
 
-    _cachedTitles = _getStaticTitles();
+    final staticList = _getStaticTitles();
+    final seen = <String>{};
+    _cachedTitles = staticList.where((t) => t.id.isNotEmpty && seen.add(t.id)).toList();
     return _cachedTitles!;
   }
 
@@ -110,15 +120,21 @@ class CatalogRepository {
     if (query.trim().isEmpty) return [];
     final titles = await getTitles();
     final q = query.toLowerCase().trim();
-    return titles.where((t) {
+    final seen = <String>{};
+    final matched = <TitleModel>[];
+    for (final t in titles) {
+      if (t.id.isEmpty || !seen.add(t.id)) continue;
       final inTitle = t.title.toLowerCase().contains(q);
       final inGenre = t.genres.any((g) => g.toLowerCase().contains(q));
       final inKind = t.kind.toLowerCase().contains(q) ||
           t.kind.replaceAll('_', ' ').toLowerCase().contains(q);
       final inCast = t.cast.any((c) => c.name.toLowerCase().contains(q));
       final inDirector = (t.director ?? '').toLowerCase().contains(q);
-      return inTitle || inGenre || inKind || inCast || inDirector;
-    }).toList();
+      if (inTitle || inGenre || inKind || inCast || inDirector) {
+        matched.add(t);
+      }
+    }
+    return matched;
   }
 
   List<TitleModel> _getStaticTitles() {
@@ -288,6 +304,127 @@ class CatalogRepository {
         backdrop: '/backdrops/sun_tv.jpg',
         videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
         cast: [],
+      ),
+      TitleModel(
+        id: 'jai_bhim',
+        title: 'Jai Bhim',
+        kind: 'film',
+        year: 2021,
+        maturity: '16+',
+        runtimeMin: 164,
+        genres: ['Legal Drama', 'Crime', 'Drama'],
+        logline: 'When a tribal man is arrested for alleged theft and goes missing, his pregnant wife seeks legal assistance.',
+        synopsis: 'Advocate Chandru takes on a habeas corpus case for Sengeni, whose husband disappeared from police custody in a village plagued by social injustice.',
+        match: 99,
+        badges: ['4K', 'HDR', 'Atmos'],
+        language: 'Tamil',
+        tone: 'ember',
+        featured: true,
+        rank: 1,
+        trending: true,
+        original: true,
+        director: 'T. J. Gnanavel',
+        poster: '/posters/jai_bhim.jpg',
+        backdrop: '/backdrops/jai_bhim.jpg',
+        trailer: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
+        videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
+        cast: [
+          CastMember(name: 'Suriya', role: 'Advocate Chandru'),
+          CastMember(name: 'Lijomol Jose', role: 'Sengeni'),
+          CastMember(name: 'Manikandan', role: 'Rajakannu'),
+        ],
+        similar: ['asuran', 'viduthalai'],
+      ),
+      TitleModel(
+        id: 'soorarai_pottru',
+        title: 'Soorarai Pottru',
+        kind: 'film',
+        year: 2020,
+        maturity: '13+',
+        runtimeMin: 153,
+        genres: ['Drama', 'Action', 'Biography'],
+        logline: 'Nedumaaran Rajangam sets out to make the common man fly and in the process takes on the world\'s most capital-intensive industry.',
+        synopsis: 'Inspired by the events of Simplifly Deccan founder G. R. Gopinath, Maara fights bureaucratic red tape and airline monopolies to launch a low-cost carrier.',
+        match: 98,
+        badges: ['4K', 'HDR', '5.1'],
+        language: 'Tamil',
+        tone: 'orbit',
+        featured: true,
+        rank: 2,
+        trending: true,
+        original: false,
+        director: 'Sudha Kongara',
+        poster: '/posters/soorarai_pottru.jpg',
+        backdrop: '/backdrops/soorarai_pottru.jpg',
+        trailer: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4',
+        videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4',
+        cast: [
+          CastMember(name: 'Suriya', role: 'Nedumaaran (Maara)'),
+          CastMember(name: 'Aparna Balamurali', role: 'Bommi'),
+          CastMember(name: 'Paresh Rawal', role: 'Paresh Goswami'),
+        ],
+        similar: ['jai_bhim'],
+      ),
+      TitleModel(
+        id: 'asuran',
+        title: 'Asuran',
+        kind: 'film',
+        year: 2019,
+        maturity: '18+',
+        runtimeMin: 141,
+        genres: ['Action', 'Drama', 'Period'],
+        logline: 'A peaceful farmer must protect his family and reconcile his violent past after an unjust confrontation with powerful landowners.',
+        synopsis: 'Sivasami lives quietly with his family until an escalating conflict forces his younger son to commit an act of vengeance, driving the family into hiding.',
+        match: 97,
+        badges: ['Full HD', '5.1'],
+        language: 'Tamil',
+        tone: 'velvet',
+        featured: false,
+        rank: 5,
+        trending: false,
+        fresh: true,
+        original: false,
+        director: 'Vetrimaaran',
+        poster: '/posters/asuran.jpg',
+        backdrop: '/backdrops/asuran.jpg',
+        trailer: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
+        videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
+        cast: [
+          CastMember(name: 'Dhanush', role: 'Sivasami'),
+          CastMember(name: 'Manju Warrier', role: 'Pachaiyammal'),
+          CastMember(name: 'Ken Karunas', role: 'Chidambaram'),
+        ],
+        similar: ['viduthalai', 'jai_bhim'],
+      ),
+      TitleModel(
+        id: 'viduthalai',
+        title: 'Viduthalai Part 1',
+        kind: 'film',
+        year: 2023,
+        maturity: '18+',
+        runtimeMin: 150,
+        genres: ['Crime', 'Thriller', 'Drama'],
+        logline: 'A conflicted rookie constable is assigned to a special task force pursuing a revered rebel leader.',
+        synopsis: 'Constable Kumaresan joins Operation Ghosthunt in a remote tribal forest, struggling with moral dilemmas between state authority and human empathy.',
+        match: 96,
+        badges: ['4K', 'Dolby Atmos'],
+        language: 'Tamil',
+        tone: 'ink',
+        featured: false,
+        trending: true,
+        fresh: true,
+        original: true,
+        director: 'Vetrimaaran',
+        poster: '/posters/viduthalai.jpg',
+        backdrop: '/backdrops/viduthalai.jpg',
+        trailer: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4',
+        videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4',
+        cast: [
+          CastMember(name: 'Soori', role: 'Kumaresan'),
+          CastMember(name: 'Vijay Sethupathi', role: 'Perumal Vaathiyar'),
+          CastMember(name: 'Bhavani Sre', role: 'Tamilarasi'),
+        ],
+        similar: ['asuran', 'suzhal'],
       ),
       TitleModel(
         id: 'armss_news',

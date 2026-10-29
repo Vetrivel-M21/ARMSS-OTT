@@ -18,6 +18,7 @@ import (
 	"armss-ott-backend/database"
 	"armss-ott-backend/middleware"
 	"armss-ott-backend/models"
+	"armss-ott-backend/services/payment"
 
 	"github.com/google/uuid"
 )
@@ -494,6 +495,17 @@ func VerifySubscriptionPayment(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"failed to activate subscription in database"}`, http.StatusInternalServerError)
 		return
 	}
+
+	// Persist audit record in payments table
+	_ = payment.SavePaymentRecord(r.Context(), database.DB, payment.PaymentRecord{
+		UserID:    claims.UserID,
+		PlanID:    req.PlanID,
+		Gateway:   "razorpay",
+		OrderID:   req.RazorpayOrderID,
+		PaymentID: req.RazorpayPaymentID,
+		Signature: req.RazorpaySignature,
+		Status:    "completed",
+	})
 
 	// Fetch updated user record
 	var user models.User

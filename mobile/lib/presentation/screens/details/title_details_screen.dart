@@ -363,10 +363,7 @@ class _TitleDetailsScreenState extends ConsumerState<TitleDetailsScreen> with Si
                         const SizedBox(height: 24),
                       ],
 
-                      Text('More Like This', style: AppTypography.sectionTitle()),
-                      const SizedBox(height: 12),
-                      _buildSimilarGrid(title.similar),
-                      const SizedBox(height: 40),
+                      _buildSimilarSection(title),
                     ],
                   ),
                 ),
@@ -508,36 +505,70 @@ class _TitleDetailsScreenState extends ConsumerState<TitleDetailsScreen> with Si
     );
   }
 
-  Widget _buildSimilarGrid(List<String> similarIds) {
+  Widget _buildSimilarSection(TitleModel currentTitle) {
     final allTitlesAsync = ref.watch(titlesProvider);
     return allTitlesAsync.when(
       loading: () => const SizedBox.shrink(),
       error: (e, st) => const SizedBox.shrink(),
       data: (allTitles) {
-        final similarTitles = allTitles.where((t) => similarIds.contains(t.id)).toList();
+        // Exclude current title to prevent self-repetition
+        final available = allTitles.where((t) => t.id != currentTitle.id).toList();
+        final seen = <String>{};
+        final similarTitles = <TitleModel>[];
+
+        // 1. Explicit similar IDs
+        for (final id in currentTitle.similar) {
+          if (id.isNotEmpty && id != currentTitle.id && seen.add(id)) {
+            final match = available.where((t) => t.id == id).firstOrNull;
+            if (match != null) similarTitles.add(match);
+          }
+        }
+
+        // 2. Fallback to same genre or category if explicit list is empty or short
+        if (similarTitles.length < 6) {
+          final genreMatches = available.where((t) =>
+              t.id != currentTitle.id &&
+              !seen.contains(t.id) &&
+              (t.genres.any((g) => currentTitle.genres.contains(g)) || t.kind == currentTitle.kind)
+          ).toList();
+          for (final t in genreMatches) {
+            if (seen.add(t.id)) {
+              similarTitles.add(t);
+              if (similarTitles.length >= 6) break;
+            }
+          }
+        }
+
         if (similarTitles.isEmpty) {
-          // Fallback to first 4 titles
           return const SizedBox.shrink();
         }
 
-        return GridView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 3,
-            childAspectRatio: 2 / 3.4,
-            crossAxisSpacing: 10,
-            mainAxisSpacing: 10,
-          ),
-          itemCount: similarTitles.length,
-          itemBuilder: (context, index) {
-            final item = similarTitles[index];
-            return PosterCard(
-              title: item,
-              width: double.infinity,
-              onTap: () => context.push('/title/${item.id}'),
-            );
-          },
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('More Like This', style: AppTypography.sectionTitle()),
+            const SizedBox(height: 12),
+            GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 3,
+                childAspectRatio: 2 / 3.4,
+                crossAxisSpacing: 10,
+                mainAxisSpacing: 10,
+              ),
+              itemCount: similarTitles.length,
+              itemBuilder: (context, index) {
+                final item = similarTitles[index];
+                return PosterCard(
+                  title: item,
+                  width: double.infinity,
+                  onTap: () => context.push('/title/${item.id}'),
+                );
+              },
+            ),
+            const SizedBox(height: 40),
+          ],
         );
       },
     );

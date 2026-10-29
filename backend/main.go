@@ -144,6 +144,9 @@ func main() {
 		// Public Profiles & Fallback
 		r.With(middleware.OptionalAuth).Get("/profiles", handlers.GetProfiles)
 
+		// Public Broadcast Notifications
+		r.Get("/notifications/latest", handlers.GetNotification)
+
 		// Public Subscription Plans & Razorpay Webhook
 		r.Get("/subscription/plans", handlers.GetPlans)
 		r.Get("/plans", handlers.PublicListPlans)
@@ -215,7 +218,9 @@ func main() {
 			r.Get("/admin/analytics/daily-trends", handlers.AdminGetDailyTrends)
 			r.Get("/admin/analytics/top-titles", handlers.AdminGetTopWatchedTitles)
 			r.Get("/admin/analytics/users", handlers.AdminGetUserAnalytics)
+			r.Get("/admin/notifications", handlers.GetNotification)
 			r.Post("/admin/notifications", handlers.AdminBroadcast)
+			r.Delete("/admin/notifications", handlers.AdminClearBroadcast)
 			r.Post("/admin/upload", handlers.AdminUpload)
 			r.Put("/admin/settings/layout", handlers.AdminUpdateLayoutSettings)
 			r.Delete("/admin/settings/layout", handlers.AdminResetLayoutSettings)

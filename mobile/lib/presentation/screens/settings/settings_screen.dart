@@ -378,10 +378,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         ),
                         const SizedBox(height: 10),
                         Text(
-                          '1. Open your browser and navigate to ${ApiConstants.mediaBaseUrl}/plans\n'
-                          '2. Sign in with ${user?.email ?? "your streaming account"}\n'
-                          '3. Choose Standard (1080p) or Premium VIP (4K)\n'
-                          '4. Complete payment and tap "Sync Plan Status" below to instantly update your account.',
+                          '1. Copy the portal link below carrying your active login session.\n'
+                          '2. Open it in any browser — you will be automatically signed in as ${user?.email ?? "your account"}.\n'
+                          '3. Choose Standard (1080p) or Premium VIP (4K) and complete payment.\n'
+                          '4. Tap "Sync Plan Status" below to immediately activate your high-tier streaming access.',
                           style: AppTypography.bodySmall.copyWith(color: Colors.white70, height: 1.4),
                         ),
                       ],
@@ -394,19 +394,35 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     width: double.infinity,
                     height: 46,
                     child: ElevatedButton.icon(
-                      onPressed: () {
-                        final plansUrl = '${ApiConstants.mediaBaseUrl}/plans';
-                        Clipboard.setData(ClipboardData(text: plansUrl));
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text('Portal link copied: $plansUrl'),
-                            backgroundColor: AppColors.surfaceElevated,
-                            duration: const Duration(seconds: 3),
-                          ),
-                        );
+                      onPressed: () async {
+                        final token = await storageService.getToken();
+                        final queryParts = <String>[];
+                        if (token != null && token.isNotEmpty) {
+                          queryParts.add('token=${Uri.encodeComponent(token)}');
+                        }
+                        if (user != null && user.email.isNotEmpty) {
+                          queryParts.add('email=${Uri.encodeComponent(user.email)}');
+                        }
+                        final queryStr = queryParts.isNotEmpty ? '?${queryParts.join("&")}' : '';
+                        final plansUrl = 'https://${ApiConstants.defaultHost}/plans$queryStr';
+
+                        await Clipboard.setData(ClipboardData(text: plansUrl));
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                token != null && token.isNotEmpty
+                                    ? 'Subscription portal link copied with your active login session! Open in browser to subscribe directly without re-signing in.'
+                                    : 'Portal link copied: https://${ApiConstants.defaultHost}/plans',
+                              ),
+                              backgroundColor: AppColors.surfaceElevated,
+                              duration: const Duration(seconds: 4),
+                            ),
+                          );
+                        }
                       },
                       icon: const Icon(Icons.copy_rounded, size: 18),
-                      label: Text('Copy Portal Link (${ApiConstants.serverHost})'),
+                      label: const Text('Copy Portal Link (Auto Sign-In)'),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: AppColors.primary,
                         foregroundColor: Colors.white,

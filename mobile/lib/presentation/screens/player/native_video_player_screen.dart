@@ -21,6 +21,7 @@ import '../../../data/models/episode_model.dart';
 import '../../../data/repositories/playback_repository.dart';
 import '../../../data/repositories/downloads_repository.dart';
 import '../../../providers/catalog_provider.dart';
+import '../../../providers/auth_provider.dart';
 
 enum VideoDisplayMode {
   fit('Fit', 'Original aspect ratio with letterbox bars'),
@@ -1061,7 +1062,7 @@ class _NativeVideoPlayerScreenState extends ConsumerState<NativeVideoPlayerScree
             ),
             const SizedBox(height: 12),
             Text(
-              isUpgradeReq ? 'VIP Subscription Required' : 'Playback Error',
+              isUpgradeReq ? 'Subscription Required' : 'Playback Error',
               style: AppTypography.cardTitle.copyWith(
                 fontSize: 18,
                 color: isUpgradeReq ? AppColors.gold : Colors.white,
@@ -1069,7 +1070,9 @@ class _NativeVideoPlayerScreenState extends ConsumerState<NativeVideoPlayerScree
             ),
             const SizedBox(height: 8),
             Text(
-              msg,
+              isUpgradeReq
+                  ? 'This title is exclusive to Standard and Premium members.'
+                  : msg,
               style: AppTypography.bodySmall.copyWith(color: AppColors.textMuted),
               textAlign: TextAlign.center,
             ),
@@ -1082,10 +1085,20 @@ class _NativeVideoPlayerScreenState extends ConsumerState<NativeVideoPlayerScree
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(color: AppColors.border),
                 ),
-                child: Text(
-                  'To upgrade your plan, please visit armss-ott.com from your web browser, sign in, and activate your VIP subscription.',
-                  style: AppTypography.bodySmall.copyWith(color: Colors.white70, fontSize: 11),
-                  textAlign: TextAlign.center,
+                child: Column(
+                  children: [
+                    Text(
+                      'Subscriptions are managed on our secure web portal with multi-device synchronization.',
+                      style: AppTypography.bodySmall.copyWith(color: Colors.white70, fontSize: 11),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Tap below to copy your direct portal link with your active login session.',
+                      style: AppTypography.bodySmall.copyWith(color: AppColors.gold, fontSize: 11, fontWeight: FontWeight.w600),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
                 ),
               ),
             ],
@@ -1095,17 +1108,36 @@ class _NativeVideoPlayerScreenState extends ConsumerState<NativeVideoPlayerScree
               children: [
                 if (isUpgradeReq)
                   ElevatedButton.icon(
-                    onPressed: () {
-                      Clipboard.setData(const ClipboardData(text: 'https://armss-ott.com/plans'));
+                    onPressed: () async {
+                      final token = await storageService.getToken();
+                      final user = ref.read(authProvider).value;
+                      final queryParts = <String>[];
+                      if (token != null && token.isNotEmpty) {
+                        queryParts.add('token=${Uri.encodeComponent(token)}');
+                      }
+                      if (user?.email != null && user!.email.isNotEmpty) {
+                        queryParts.add('email=${Uri.encodeComponent(user.email)}');
+                      }
+                      queryParts.add('plan=premium');
+                      final queryStr = queryParts.isNotEmpty ? '?${queryParts.join("&")}' : '';
+                      final plansUrl = 'https://${ApiConstants.defaultHost}/plans$queryStr';
+
+                      await Clipboard.setData(ClipboardData(text: plansUrl));
+                      if (!mounted) return;
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Website link copied: https://armss-ott.com/plans'),
+                        SnackBar(
+                          content: Text(
+                            token != null && token.isNotEmpty
+                                ? 'Subscription link copied with your active login session! Open in any browser to activate without re-signing in.'
+                                : 'Portal link copied: https://${ApiConstants.defaultHost}/plans',
+                          ),
                           backgroundColor: AppColors.surfaceElevated,
+                          duration: const Duration(seconds: 4),
                         ),
                       );
                     },
                     icon: const Icon(Icons.copy_rounded, size: 16),
-                    label: const Text('Copy Website Link'),
+                    label: const Text('Copy Portal Link (Auto Sign-In)'),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.primary,
                       foregroundColor: Colors.white,

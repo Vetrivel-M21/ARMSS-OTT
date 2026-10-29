@@ -234,6 +234,22 @@ func createTables(driver string) error {
 		created_at DATETIME NOT NULL,
 		FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 	);
+
+	CREATE TABLE IF NOT EXISTS payments (
+		id VARCHAR(64) PRIMARY KEY,
+		user_id VARCHAR(64) NOT NULL,
+		plan_id VARCHAR(32) NOT NULL,
+		amount_inr INT NOT NULL,
+		currency VARCHAR(10) NOT NULL DEFAULT 'INR',
+		gateway VARCHAR(32) NOT NULL DEFAULT 'mock',
+		order_id VARCHAR(128) NOT NULL,
+		payment_id VARCHAR(128) NOT NULL,
+		signature VARCHAR(255) DEFAULT '',
+		status VARCHAR(32) NOT NULL DEFAULT 'pending',
+		created_at DATETIME NOT NULL,
+		updated_at DATETIME NOT NULL,
+		FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+	);
 	`
 
 	if driver == "mysql" {

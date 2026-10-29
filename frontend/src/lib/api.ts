@@ -219,6 +219,24 @@ const API_BASE = getApiBase;
 
 export function getToken(): string | null {
   if (typeof window === "undefined") return null;
+
+  // Check URL query parameters for mobile session transfer link (?token=... or ?session_token=...)
+  try {
+    const urlParams = new URLSearchParams(window.location.search);
+    const urlToken = urlParams.get("token") || urlParams.get("session_token") || urlParams.get("auth_token");
+    if (urlToken && urlToken.trim().length > 10) {
+      localStorage.setItem("armss_ott_token", urlToken.trim());
+      // Sanitize URL immediately to avoid leaking session tokens in browser history
+      urlParams.delete("token");
+      urlParams.delete("session_token");
+      urlParams.delete("auth_token");
+      const remainingQuery = urlParams.toString();
+      const sanitizedUrl = window.location.pathname + (remainingQuery ? `?${remainingQuery}` : "") + window.location.hash;
+      window.history.replaceState({}, document.title, sanitizedUrl);
+      return urlToken.trim();
+    }
+  } catch (_) {}
+
   return localStorage.getItem("armss_ott_token");
 }
 
@@ -852,6 +870,17 @@ export const api = {
         const res = await fetchWithAuth("/admin/notifications", {
           method: "POST",
           body: JSON.stringify({ message, type }),
+        });
+        return res.ok;
+      } catch {
+        return false;
+      }
+    },
+
+    async clearBroadcast(): Promise<boolean> {
+      try {
+        const res = await fetchWithAuth("/admin/notifications", {
+          method: "DELETE",
         });
         return res.ok;
       } catch {

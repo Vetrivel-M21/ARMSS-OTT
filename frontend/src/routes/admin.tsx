@@ -2917,6 +2917,29 @@ function BroadcastTab() {
   const [message, setMessage] = useState("");
   const [type, setType] = useState<"info" | "warning" | "success">("info");
   const [sending, setSending] = useState(false);
+  const [activeBroadcast, setActiveBroadcast] = useState<{
+    message: string;
+    type: "info" | "warning" | "success";
+    sent_at: string;
+  } | null>(null);
+  const [loadingActive, setLoadingActive] = useState(true);
+  const [clearing, setClearing] = useState(false);
+
+  const loadActive = async () => {
+    try {
+      setLoadingActive(true);
+      const res = await api.getLatestNotification();
+      setActiveBroadcast(res);
+    } catch {
+      setActiveBroadcast(null);
+    } finally {
+      setLoadingActive(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadActive();
+  }, []);
 
   const handleSend = async () => {
     if (!message.trim()) {
@@ -2928,20 +2951,115 @@ function BroadcastTab() {
     if (ok) {
       toast.success("Notification broadcast sent to all users.");
       setMessage("");
+      await loadActive();
     } else {
       toast.error("Broadcast failed. Backend may not be connected.");
     }
     setSending(false);
   };
 
-  return (
-    <div className="max-w-xl">
-      <h2 className="text-lg font-semibold text-fg mb-2">Broadcast Notification</h2>
-      <p className="text-sm text-muted mb-6">
-        Send a platform-wide notification to all ARMSS OTT users. This message will appear the next time users make an API call.
-      </p>
+  const handleClear = async () => {
+    setClearing(true);
+    try {
+      const ok = await api.admin.clearBroadcast();
+      if (ok) {
+        toast.success("Active broadcast message has been deactivated.");
+        setActiveBroadcast(null);
+      } else {
+        toast.error("Failed to deactivate broadcast.");
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Failed to clear broadcast.");
+    } finally {
+      setClearing(false);
+    }
+  };
 
-      <div className="space-y-4">
+  return (
+    <div className="max-w-xl space-y-8">
+      <div>
+        <h2 className="text-lg font-semibold text-fg mb-2">Broadcast Notification</h2>
+        <p className="text-sm text-muted">
+          Send a platform-wide notification banner to all active users, or deactivate the message currently on air.
+        </p>
+      </div>
+
+      {/* ── Active Broadcast Status Card ── */}
+      <div className="rounded-xl border border-border bg-surface p-5 shadow-sm">
+        <div className="flex items-center justify-between pb-3 border-b border-border">
+          <div className="flex items-center gap-2">
+            <span
+              className={`size-2.5 rounded-full ${
+                activeBroadcast ? "bg-match animate-pulse" : "bg-muted"
+              }`}
+            />
+            <h3 className="text-sm font-semibold text-fg">Active Broadcast Status</h3>
+          </div>
+          {activeBroadcast && (
+            <span
+              className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                activeBroadcast.type === "warning"
+                  ? "bg-amber-500/20 text-amber-400 border border-amber-500/40"
+                  : activeBroadcast.type === "success"
+                  ? "bg-match/20 text-match border border-match/30"
+                  : "bg-accent/20 text-accent border border-accent/30"
+              }`}
+            >
+              {activeBroadcast.type}
+            </span>
+          )}
+        </div>
+
+        {loadingActive ? (
+          <div className="py-6 flex items-center justify-center text-xs text-muted">
+            <RefreshCw className="size-3.5 animate-spin mr-2 text-accent" />
+            Checking broadcast status...
+          </div>
+        ) : activeBroadcast && activeBroadcast.message ? (
+          <div className="pt-4 space-y-4">
+            <div className="rounded-lg bg-surface-elevated border border-border/80 p-3.5">
+              <p className="text-sm text-fg font-medium leading-relaxed">{activeBroadcast.message}</p>
+              {activeBroadcast.sent_at && (
+                <p className="text-[11px] text-muted mt-2">
+                  Broadcasted {formatRelativeGlobal(activeBroadcast.sent_at)} ({new Date(activeBroadcast.sent_at).toLocaleTimeString()})
+                </p>
+              )}
+            </div>
+
+            <div className="flex justify-end">
+              <Button
+                type="button"
+                variant="line"
+                disabled={clearing}
+                onClick={handleClear}
+                className="text-xs text-red-400 border-red-500/30 hover:bg-red-500/15 hover:text-red-300 hover:border-red-500/50 flex items-center gap-2"
+              >
+                {clearing ? <RefreshCw className="size-3.5 animate-spin" /> : <Trash2 className="size-3.5" />}
+                {clearing ? "Deactivating..." : "Deactivate / Clear Broadcast"}
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="pt-4 py-2 text-xs text-muted flex items-center justify-between">
+            <span>No active broadcast notification on air.</span>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={loadActive}
+              className="text-[11px] text-muted hover:text-fg h-7 px-2"
+            >
+              <RefreshCw className="size-3 mr-1" />
+              Refresh
+            </Button>
+          </div>
+        )}
+      </div>
+
+      {/* ── Publish New Broadcast Form ── */}
+      <div className="rounded-xl border border-border bg-surface p-5 shadow-sm space-y-4">
+        <h3 className="text-sm font-semibold text-fg">Publish New Broadcast</h3>
+
         <div>
           <label className="block text-xs font-medium text-muted mb-1.5">Notification Type</label>
           <div className="flex gap-2">
@@ -2957,7 +3075,7 @@ function BroadcastTab() {
                       : t === "success"
                       ? "bg-match/20 text-match border border-match/30"
                       : "bg-accent/20 text-accent border border-accent/30"
-                    : "bg-surface text-muted border border-border hover:text-fg"
+                    : "bg-surface-elevated text-muted border border-border hover:text-fg"
                 }`}
               >
                 {t}
@@ -2973,7 +3091,7 @@ function BroadcastTab() {
             onChange={(e) => setMessage(e.target.value)}
             placeholder="Enter your broadcast message to all users..."
             rows={4}
-            className="w-full rounded-lg bg-surface px-4 py-3 text-sm text-fg border border-border focus:outline-none focus:border-accent resize-none placeholder:text-muted"
+            className="w-full rounded-lg bg-surface-elevated px-4 py-3 text-sm text-fg border border-border focus:outline-none focus:border-accent resize-none placeholder:text-muted"
           />
           <p className="mt-1 text-xs text-muted">{message.length} / 280 characters</p>
         </div>
