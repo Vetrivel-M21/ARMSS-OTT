@@ -306,6 +306,54 @@ func CreateSubscriptionCheckout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Check if active gateway is Cashfree
+	gw := payment.GetActiveGateway()
+	if gw.Name() == "cashfree" {
+		var userName string
+		_ = database.DB.QueryRowContext(r.Context(), "SELECT name FROM users WHERE id = ?", claims.UserID).Scan(&userName)
+		if userName == "" {
+			userName = claims.Email
+		}
+
+		cfOrder, err := gw.CreateOrder(r.Context(), payment.OrderRequest{
+			UserID:    claims.UserID,
+			UserEmail: claims.Email,
+			UserName:  userName,
+			PlanID:    req.PlanID,
+			AmountINR: priceINR,
+			Currency:  "INR",
+		})
+		if err != nil {
+			log.Printf("[Cashfree Checkout] Order creation failed: %v", err)
+			http.Error(w, fmt.Sprintf(`{"error":"failed to initialize payment gateway: %v"}`, err), http.StatusInternalServerError)
+			return
+		}
+
+		now := time.Now()
+		_, _ = database.DB.ExecContext(r.Context(),
+			`INSERT INTO user_subscriptions 
+				(id, user_id, plan_id, razorpay_subscription_id, razorpay_customer_id, status, current_period_start, current_period_end, created_at, updated_at)
+			 VALUES (?, ?, ?, ?, '', 'pending', ?, ?, ?, ?)
+			 ON DUPLICATE KEY UPDATE plan_id = VALUES(plan_id), status = 'pending', updated_at = NOW()`,
+			uuid.NewString(), claims.UserID, req.PlanID, cfOrder.OrderID, now, now.AddDate(0, 1, 0), now, now,
+		)
+
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"order_id":           cfOrder.OrderID,
+			"payment_session_id": cfOrder.PaymentSessionID,
+			"plan_id":            req.PlanID,
+			"plan_name":          planName,
+			"amount_inr":         priceINR,
+			"currency":           "INR",
+			"user_email":         claims.Email,
+			"user_name":          userName,
+			"gateway":            "cashfree",
+			"environment":        cfOrder.Environment,
+		})
+		return
+	}
+
 	keyID := os.Getenv("RAZORPAY_KEY_ID")
 	keySecret := os.Getenv("RAZORPAY_KEY_SECRET")
 
@@ -441,14 +489,16 @@ func VerifyPaymentSignature(dataToSign, signature, secret string) bool {
 
 type VerifyPaymentRequest struct {
 	PlanID                 string `json:"plan_id"`
-	RazorpayPaymentID      string `json:"razorpay_payment_id"`
+	Gateway                string `json:"gateway,omitempty"`
+	CashfreeOrderID        string `json:"cashfree_order_id,omitempty"`
+	RazorpayPaymentID      string `json:"razorpay_payment_id,omitempty"`
 	RazorpaySubscriptionID string `json:"razorpay_subscription_id,omitempty"`
 	RazorpayOrderID        string `json:"razorpay_order_id,omitempty"`
-	RazorpaySignature      string `json:"razorpay_signature"`
+	RazorpaySignature      string `json:"razorpay_signature,omitempty"`
 }
 
 // VerifySubscriptionPayment handles POST /api/subscription/verify.
-// Validates client checkout signature and immediately upgrades the user's tier.
+// Validates client checkout signature/order status and immediately upgrades the user's tier.
 func VerifySubscriptionPayment(w http.ResponseWriter, r *http.Request) {
 	claims := middleware.GetUserFromContext(r)
 	if claims == nil {
@@ -467,31 +517,70 @@ func VerifySubscriptionPayment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	keySecret := os.Getenv("RAZORPAY_KEY_SECRET")
-
-	// Determine dataToSign based on whether payment was via subscription or order
-	var dataToSign string
-	trackingID := req.RazorpaySubscriptionID
-	if req.RazorpaySubscriptionID != "" {
-		dataToSign = req.RazorpayPaymentID + "|" + req.RazorpaySubscriptionID
-	} else if req.RazorpayOrderID != "" {
-		dataToSign = req.RazorpayOrderID + "|" + req.RazorpayPaymentID
-		trackingID = req.RazorpayOrderID
-	} else {
-		trackingID = "mock_sub_" + uuid.NewString()[:8]
-	}
-
-	if keySecret != "" && req.RazorpaySignature != "" {
-		if !VerifyPaymentSignature(dataToSign, req.RazorpaySignature, keySecret) {
-			log.Printf("[Razorpay Verify] Invalid signature rejected for user %s, plan %s", claims.UserID, req.PlanID)
-			http.Error(w, `{"error":"invalid payment signature"}`, http.StatusBadRequest)
-			return
+	gw := payment.GetActiveGateway()
+	gatewayName := req.Gateway
+	if gatewayName == "" {
+		if req.CashfreeOrderID != "" || (gw.Name() == "cashfree" && req.RazorpaySignature == "") {
+			gatewayName = "cashfree"
+		} else {
+			gatewayName = "razorpay"
 		}
 	}
 
-	// Signature is valid — activate subscription in user_subscriptions & users table
+	var trackingID string
+	var paymentID string
+
+	if gatewayName == "cashfree" {
+		cfOrderID := req.CashfreeOrderID
+		if cfOrderID == "" {
+			cfOrderID = req.RazorpayOrderID
+		}
+		if cfOrderID == "" {
+			http.Error(w, `{"error":"missing cashfree_order_id"}`, http.StatusBadRequest)
+			return
+		}
+		trackingID = cfOrderID
+
+		verResult, err := gw.VerifyPayment(r.Context(), payment.VerifyRequest{
+			UserID:          claims.UserID,
+			PlanID:          req.PlanID,
+			CashfreeOrderID: cfOrderID,
+		})
+		if err != nil {
+			log.Printf("[Cashfree Verify] Verification failed: %v", err)
+			http.Error(w, fmt.Sprintf(`{"error":"payment verification failed: %v"}`, err), http.StatusBadRequest)
+			return
+		}
+		paymentID = verResult.TransactionID
+	} else {
+		// Razorpay flow
+		keySecret := os.Getenv("RAZORPAY_KEY_SECRET")
+
+		// Determine dataToSign based on whether payment was via subscription or order
+		var dataToSign string
+		trackingID = req.RazorpaySubscriptionID
+		if req.RazorpaySubscriptionID != "" {
+			dataToSign = req.RazorpayPaymentID + "|" + req.RazorpaySubscriptionID
+		} else if req.RazorpayOrderID != "" {
+			dataToSign = req.RazorpayOrderID + "|" + req.RazorpayPaymentID
+			trackingID = req.RazorpayOrderID
+		} else {
+			trackingID = "mock_sub_" + uuid.NewString()[:8]
+		}
+
+		if keySecret != "" && req.RazorpaySignature != "" {
+			if !VerifyPaymentSignature(dataToSign, req.RazorpaySignature, keySecret) {
+				log.Printf("[Razorpay Verify] Invalid signature rejected for user %s, plan %s", claims.UserID, req.PlanID)
+				http.Error(w, `{"error":"invalid payment signature"}`, http.StatusBadRequest)
+				return
+			}
+		}
+		paymentID = req.RazorpayPaymentID
+	}
+
+	// Signature/Status is valid — activate subscription in user_subscriptions & users table
 	if err := activateUserPlan(r.Context(), claims.UserID, req.PlanID, trackingID, "", time.Now().AddDate(0, 1, 0)); err != nil {
-		log.Printf("[Razorpay Verify] Failed to activate plan: %v", err)
+		log.Printf("[Payment Verify] Failed to activate plan: %v", err)
 		http.Error(w, `{"error":"failed to activate subscription in database"}`, http.StatusInternalServerError)
 		return
 	}
@@ -500,9 +589,9 @@ func VerifySubscriptionPayment(w http.ResponseWriter, r *http.Request) {
 	_ = payment.SavePaymentRecord(r.Context(), database.DB, payment.PaymentRecord{
 		UserID:    claims.UserID,
 		PlanID:    req.PlanID,
-		Gateway:   "razorpay",
-		OrderID:   req.RazorpayOrderID,
-		PaymentID: req.RazorpayPaymentID,
+		Gateway:   gatewayName,
+		OrderID:   trackingID,
+		PaymentID: paymentID,
 		Signature: req.RazorpaySignature,
 		Status:    "completed",
 	})

@@ -147,10 +147,11 @@ func main() {
 		// Public Broadcast Notifications
 		r.Get("/notifications/latest", handlers.GetNotification)
 
-		// Public Subscription Plans & Razorpay Webhook
+		// Public Subscription Plans & Payment Webhooks
 		r.Get("/subscription/plans", handlers.GetPlans)
 		r.Get("/plans", handlers.PublicListPlans)
 		r.Post("/webhooks/razorpay", handlers.HandleRazorpayWebhook)
+		r.Post("/webhooks/cashfree", handlers.HandleCashfreeWebhook)
 
 		// Public Catalog
 		r.Get("/titles", handlers.ListTitles)

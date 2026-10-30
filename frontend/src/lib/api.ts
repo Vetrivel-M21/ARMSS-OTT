@@ -47,23 +47,28 @@ export interface PlaybackTicketResponse {
 }
 
 export interface SubscriptionCheckoutResponse {
-  subscription_id: string;
+  subscription_id?: string;
   order_id?: string;
-  key_id: string;
+  payment_session_id?: string;
+  key_id?: string;
   plan_id: string;
   plan_name: string;
   amount_inr: number;
   currency: string;
   user_email: string;
   user_name: string;
+  gateway?: string;
+  environment?: string;
 }
 
 export interface VerifySubscriptionRequest {
   plan_id: string;
-  razorpay_payment_id: string;
+  gateway?: string;
+  cashfree_order_id?: string;
+  razorpay_payment_id?: string;
   razorpay_subscription_id?: string;
   razorpay_order_id?: string;
-  razorpay_signature: string;
+  razorpay_signature?: string;
 }
 
 export interface AnalyticsOverview {

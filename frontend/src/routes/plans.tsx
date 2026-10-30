@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { api, type SubscriptionTier } from "@/lib/api";
 import { loadRazorpayScript } from "@/lib/razorpay";
+import { launchCashfreeCheckout } from "@/lib/cashfree";
 import { useAether } from "@/lib/store";
 
 export const Route = createFileRoute("/plans")({ component: PlansPage });
@@ -55,7 +56,43 @@ function PlansPage() {
         // 1. Create Checkout on Go API backend
         const checkout = await api.createSubscriptionCheckout(tier);
 
-        // 2. Load official Razorpay Checkout SDK
+        // 2. Handle Cashfree Payment Gateway
+        if (checkout.gateway === "cashfree") {
+          // If in dev mock mode without Cashfree keys
+          if (!checkout.payment_session_id || checkout.payment_session_id.startsWith("session_mock")) {
+            const verifyRes = await api.verifySubscriptionPayment({
+              plan_id: tier,
+              gateway: "cashfree",
+              cashfree_order_id: checkout.order_id,
+            });
+            setUser(verifyRes.user);
+            toast.success(
+              `Successfully activated ${tier === "premium" ? "Premium VIP 4K" : "Standard HD"}! (Dev Mode)`
+            );
+            return;
+          }
+
+          // Live / Sandbox Cashfree Modal Checkout
+          await launchCashfreeCheckout({
+            paymentSessionId: checkout.payment_session_id,
+            environment: checkout.environment,
+          });
+
+          toast.loading("Verifying Cashfree payment...", { id: "cf-verify" });
+          const verifyRes = await api.verifySubscriptionPayment({
+            plan_id: tier,
+            gateway: "cashfree",
+            cashfree_order_id: checkout.order_id,
+          });
+          setUser(verifyRes.user);
+          toast.success(
+            `Payment verified! Welcome to ${tier === "premium" ? "Premium VIP 4K" : "Standard HD"}!`,
+            { id: "cf-verify" }
+          );
+          return;
+        }
+
+        // 3. Fallback to Razorpay if configured
         const scriptLoaded = await loadRazorpayScript();
 
         // If in mock dev mode or Razorpay script fails to load, gracefully fall back

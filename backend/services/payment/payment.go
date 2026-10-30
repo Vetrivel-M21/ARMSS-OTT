@@ -26,26 +26,30 @@ type OrderRequest struct {
 
 // OrderResponse returns checkout initialization details to the web client.
 type OrderResponse struct {
-	OrderID        string `json:"order_id"`
-	SubscriptionID string `json:"subscription_id,omitempty"`
-	KeyID          string `json:"key_id"`
-	PlanID         string `json:"plan_id"`
-	PlanName       string `json:"plan_name"`
-	AmountINR      int    `json:"amount_inr"`
-	Currency       string `json:"currency"`
-	UserEmail      string `json:"user_email"`
-	UserName       string `json:"user_name"`
-	Gateway        string `json:"gateway"`
+	OrderID          string `json:"order_id"`
+	PaymentSessionID string `json:"payment_session_id,omitempty"`
+	SubscriptionID   string `json:"subscription_id,omitempty"`
+	KeyID            string `json:"key_id,omitempty"`
+	PlanID           string `json:"plan_id"`
+	PlanName         string `json:"plan_name"`
+	AmountINR        int    `json:"amount_inr"`
+	Currency         string `json:"currency"`
+	UserEmail        string `json:"user_email"`
+	UserName         string `json:"user_name"`
+	Gateway          string `json:"gateway"`
+	Environment      string `json:"environment,omitempty"`
 }
 
 // VerifyRequest contains transaction credentials to verify after client checkout.
 type VerifyRequest struct {
 	UserID                 string `json:"user_id"`
 	PlanID                 string `json:"plan_id"`
-	RazorpayPaymentID      string `json:"razorpay_payment_id"`
+	Gateway                string `json:"gateway,omitempty"`
+	CashfreeOrderID        string `json:"cashfree_order_id,omitempty"`
+	RazorpayPaymentID      string `json:"razorpay_payment_id,omitempty"`
 	RazorpayOrderID        string `json:"razorpay_order_id,omitempty"`
 	RazorpaySubscriptionID string `json:"razorpay_subscription_id,omitempty"`
-	RazorpaySignature      string `json:"razorpay_signature"`
+	RazorpaySignature      string `json:"razorpay_signature,omitempty"`
 }
 
 // VerifyResult contains the verification decision.
@@ -190,13 +194,24 @@ func (r *RazorpayGateway) VerifyPayment(ctx context.Context, req VerifyRequest) 
 // GetActiveGateway returns the configured PaymentGateway implementation.
 func GetActiveGateway() PaymentGateway {
 	gatewayEnv := strings.ToLower(strings.TrimSpace(os.Getenv("PAYMENT_GATEWAY")))
+	cfApp := strings.TrimSpace(os.Getenv("CASHFREE_APP_ID"))
+	cfSecret := strings.TrimSpace(os.Getenv("CASHFREE_SECRET_KEY"))
+	cfEnv := strings.TrimSpace(os.Getenv("CASHFREE_ENV"))
+
+	// 1. Explicit Cashfree or Cashfree credentials present
+	if gatewayEnv == "cashfree" || (gatewayEnv == "" && cfApp != "" && cfSecret != "") {
+		return NewCashfreeGateway(cfApp, cfSecret, cfEnv)
+	}
+
+	// 2. Razorpay fallback if configured
 	rzpKey := strings.TrimSpace(os.Getenv("RAZORPAY_KEY_ID"))
 	rzpSecret := strings.TrimSpace(os.Getenv("RAZORPAY_KEY_SECRET"))
-
-	if (gatewayEnv == "razorpay" || gatewayEnv == "") && rzpKey != "" && rzpSecret != "" {
-		return &RazorpayGateway{
-			KeyID:     rzpKey,
-			KeySecret: rzpSecret,
+	if gatewayEnv == "razorpay" || (gatewayEnv == "" && rzpKey != "" && rzpSecret != "") {
+		if rzpKey != "" && rzpSecret != "" {
+			return &RazorpayGateway{
+				KeyID:     rzpKey,
+				KeySecret: rzpSecret,
+			}
 		}
 	}
 

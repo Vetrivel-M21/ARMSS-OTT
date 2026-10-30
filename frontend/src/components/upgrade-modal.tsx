@@ -4,6 +4,7 @@ import { Check, Crown, Download, Film, ShieldCheck, Sparkles, Tv, X } from "luci
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { loadRazorpayScript } from "@/lib/razorpay";
+import { launchCashfreeCheckout } from "@/lib/cashfree";
 import { useAether } from "@/lib/store";
 import { Button } from "./ui/button";
 
@@ -30,7 +31,44 @@ export function UpgradeModal() {
       // 1. Initiate checkout with Go backend
       const checkout = await api.createSubscriptionCheckout(tier);
 
-      // 2. Load official Razorpay Checkout SDK
+      // 2. Handle Cashfree Payment Gateway
+      if (checkout.gateway === "cashfree") {
+        if (!checkout.payment_session_id || checkout.payment_session_id.startsWith("session_mock")) {
+          const verifyRes = await api.verifySubscriptionPayment({
+            plan_id: tier,
+            gateway: "cashfree",
+            cashfree_order_id: checkout.order_id,
+          });
+          setUser(verifyRes.user);
+          toast.success(
+            `Upgraded to ${tier === "premium" ? "Premium VIP 4K" : "Standard 1080p"}! (Dev Mode)`
+          );
+          setOpen(false);
+          return;
+        }
+
+        // Live / Sandbox Cashfree Modal Checkout
+        await launchCashfreeCheckout({
+          paymentSessionId: checkout.payment_session_id,
+          environment: checkout.environment,
+        });
+
+        toast.loading("Verifying payment...", { id: "cf-modal-verify" });
+        const verifyRes = await api.verifySubscriptionPayment({
+          plan_id: tier,
+          gateway: "cashfree",
+          cashfree_order_id: checkout.order_id,
+        });
+        setUser(verifyRes.user);
+        toast.success(
+          `Payment verified! Upgraded to ${tier === "premium" ? "Premium VIP 4K" : "Standard 1080p"}!`,
+          { id: "cf-modal-verify" }
+        );
+        setOpen(false);
+        return;
+      }
+
+      // 3. Load official Razorpay Checkout SDK fallback
       const scriptLoaded = await loadRazorpayScript();
 
       // Graceful fallback for mock test mode or script load issues
