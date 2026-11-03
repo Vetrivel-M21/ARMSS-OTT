@@ -11,6 +11,7 @@ import '../../../data/repositories/downloads_repository.dart';
 import '../../../providers/catalog_provider.dart';
 import '../../../providers/watchlist_provider.dart';
 import '../../../providers/downloads_provider.dart';
+import '../../../providers/auth_provider.dart';
 import '../../common/badge_chip.dart';
 import '../../common/poster_card.dart';
 
@@ -64,6 +65,11 @@ class _TitleDetailsScreenState extends ConsumerState<TitleDetailsScreen> with Si
           final isSeries = title.kind == 'series';
           final downloadStatus = ref.watch(titleDownloadStatusProvider(title.id));
           final isWatchlisted = ref.watch(watchlistProvider).any((t) => t.id == title.id);
+          final user = ref.watch(authProvider).value;
+          final userTier = user?.subscriptionTier.toLowerCase() ?? 'free';
+          final reqTier = title.requiredTier.toLowerCase();
+          final isLocked = (reqTier == 'premium' && userTier != 'premium') ||
+              (reqTier == 'standard' && userTier == 'free');
 
           return CustomScrollView(
             physics: const BouncingScrollPhysics(),
@@ -148,16 +154,26 @@ class _TitleDetailsScreenState extends ConsumerState<TitleDetailsScreen> with Si
                       // Center Play Floating Button
                       Center(
                         child: GestureDetector(
-                          onTap: () => context.push('/player/${title.id}'),
+                          onTap: () {
+                            if (isLocked) {
+                              context.push('/plans');
+                            } else {
+                              context.push('/player/${title.id}');
+                            }
+                          },
                           child: Container(
                             width: 60,
                             height: 60,
                             decoration: BoxDecoration(
-                              color: Colors.black.withOpacity(0.6),
+                              color: isLocked ? AppColors.gold.withValues(alpha: 0.9) : Colors.black.withOpacity(0.6),
                               shape: BoxShape.circle,
                               border: Border.all(color: Colors.white.withOpacity(0.8), width: 2),
                             ),
-                            child: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 36),
+                            child: Icon(
+                              isLocked ? Icons.lock_outline_rounded : Icons.play_arrow_rounded,
+                              color: isLocked ? Colors.black : Colors.white,
+                              size: 34,
+                            ),
                           ),
                         ),
                       ),
@@ -190,38 +206,93 @@ class _TitleDetailsScreenState extends ConsumerState<TitleDetailsScreen> with Si
                           Text('${title.year}', style: AppTypography.bodySmall),
                           BadgeChip(label: title.maturity),
                           Text(title.durationString, style: AppTypography.bodySmall),
+                          if (title.requiredTier != 'free')
+                            BadgeChip(label: '${title.requiredTier.toUpperCase()} VIP'),
                           if (title.badges.isNotEmpty)
                             BadgeChip(label: title.badges.first),
                         ],
                       ),
                       const SizedBox(height: 16),
 
-                      // Big Play Button
-                      SizedBox(
-                        width: double.infinity,
-                        height: 48,
-                        child: ElevatedButton.icon(
-                          onPressed: () {
-                            if (isSeries && title.episodes.isNotEmpty) {
-                              final firstEp = title.episodes.first;
-                              final epUrl = firstEp.videoUrl != null && firstEp.videoUrl!.isNotEmpty ? Uri.encodeComponent(firstEp.videoUrl!) : '';
-                              context.push('/player/${title.id}?episode_id=${firstEp.id}&ep_title=${Uri.encodeComponent(firstEp.title)}${epUrl.isNotEmpty ? '&url=$epUrl' : ''}');
-                            } else {
-                              final movieUrl = title.videoUrl != null && title.videoUrl!.isNotEmpty ? Uri.encodeComponent(title.videoUrl!) : '';
-                              context.push('/player/${title.id}${movieUrl.isNotEmpty ? '?url=$movieUrl' : ''}');
-                            }
-                          },
-                          icon: const Icon(Icons.play_arrow_rounded, color: Colors.black, size: 28),
-                          label: Text(
-                            isSeries ? (title.episodes.isNotEmpty ? 'Play S1:E1' : 'Play Series') : 'Play Movie',
-                            style: AppTypography.button.copyWith(color: Colors.black),
+                      // Primary Action: Play vs Unlock Paywall Button
+                      if (isLocked) ...[
+                        Container(
+                          width: double.infinity,
+                          height: 48,
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [Color(0xFFF3BA2F), Color(0xFFC7881B)],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                            borderRadius: BorderRadius.circular(8),
+                            boxShadow: [
+                              BoxShadow(
+                                color: const Color(0xFFF3BA2F).withValues(alpha: 0.3),
+                                blurRadius: 10,
+                                offset: const Offset(0, 3),
+                              ),
+                            ],
                           ),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.white,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                          child: ElevatedButton.icon(
+                            onPressed: () => context.push('/plans'),
+                            icon: const Icon(Icons.workspace_premium_rounded, color: Colors.black, size: 24),
+                            label: Text(
+                              'Unlock with ${reqTier == "premium" ? "Premium VIP" : "Standard"} Plan',
+                              style: AppTypography.button.copyWith(color: Colors.black, fontWeight: FontWeight.bold),
+                            ),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.transparent,
+                              shadowColor: Colors.transparent,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                            ),
                           ),
                         ),
-                      ),
+                        if (title.trailer != null && title.trailer!.isNotEmpty) ...[
+                          const SizedBox(height: 10),
+                          SizedBox(
+                            width: double.infinity,
+                            height: 44,
+                            child: OutlinedButton.icon(
+                              onPressed: () {
+                                final trailerUrl = Uri.encodeComponent(title.trailer!);
+                                context.push('/player/${title.id}?url=$trailerUrl');
+                              },
+                              icon: const Icon(Icons.movie_outlined, color: Colors.white, size: 20),
+                              label: const Text('Watch Free Trailer', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+                              style: OutlinedButton.styleFrom(
+                                side: const BorderSide(color: AppColors.border),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ] else
+                        SizedBox(
+                          width: double.infinity,
+                          height: 48,
+                          child: ElevatedButton.icon(
+                            onPressed: () {
+                              if (isSeries && title.episodes.isNotEmpty) {
+                                final firstEp = title.episodes.first;
+                                final epUrl = firstEp.videoUrl != null && firstEp.videoUrl!.isNotEmpty ? Uri.encodeComponent(firstEp.videoUrl!) : '';
+                                context.push('/player/${title.id}?episode_id=${firstEp.id}&ep_title=${Uri.encodeComponent(firstEp.title)}${epUrl.isNotEmpty ? '&url=$epUrl' : ''}');
+                              } else {
+                                final movieUrl = title.videoUrl != null && title.videoUrl!.isNotEmpty ? Uri.encodeComponent(title.videoUrl!) : '';
+                                context.push('/player/${title.id}${movieUrl.isNotEmpty ? '?url=$movieUrl' : ''}');
+                              }
+                            },
+                            icon: const Icon(Icons.play_arrow_rounded, color: Colors.black, size: 28),
+                            label: Text(
+                              isSeries ? (title.episodes.isNotEmpty ? 'Play S1:E1' : 'Play Series') : 'Play Movie',
+                              style: AppTypography.button.copyWith(color: Colors.black),
+                            ),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                            ),
+                          ),
+                        ),
                       const SizedBox(height: 10),
 
                       // Download Button
@@ -343,7 +414,7 @@ class _TitleDetailsScreenState extends ConsumerState<TitleDetailsScreen> with Si
                         Text('Episodes', style: AppTypography.sectionTitle()),
                         const SizedBox(height: 12),
                         if (title.episodes.isNotEmpty)
-                          ...title.episodes.map((ep) => _buildEpisodeItem(title, ep))
+                          ...title.episodes.map((ep) => _buildEpisodeItem(title, ep, isLocked))
                         else
                           Container(
                             padding: const EdgeInsets.all(16),
@@ -400,7 +471,7 @@ class _TitleDetailsScreenState extends ConsumerState<TitleDetailsScreen> with Si
     );
   }
 
-  Widget _buildEpisodeItem(TitleModel title, EpisodeModel ep) {
+  Widget _buildEpisodeItem(TitleModel title, EpisodeModel ep, bool isLocked) {
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.all(10),
@@ -456,16 +527,24 @@ class _TitleDetailsScreenState extends ConsumerState<TitleDetailsScreen> with Si
                   ),
                   GestureDetector(
                     onTap: () {
+                      if (isLocked) {
+                        context.push('/plans');
+                        return;
+                      }
                       final epUrl = ep.videoUrl != null && ep.videoUrl!.isNotEmpty ? Uri.encodeComponent(ep.videoUrl!) : '';
                       context.push('/player/${title.id}?episode_id=${ep.id}&ep_title=${Uri.encodeComponent(ep.title)}${epUrl.isNotEmpty ? '&url=$epUrl' : ''}');
                     },
                     child: Container(
                       padding: const EdgeInsets.all(6),
                       decoration: BoxDecoration(
-                        color: Colors.black.withOpacity(0.6),
+                        color: isLocked ? AppColors.gold.withValues(alpha: 0.85) : Colors.black.withOpacity(0.6),
                         shape: BoxShape.circle,
                       ),
-                      child: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 20),
+                      child: Icon(
+                        isLocked ? Icons.lock_outline_rounded : Icons.play_arrow_rounded,
+                        color: isLocked ? Colors.black : Colors.white,
+                        size: 20,
+                      ),
                     ),
                   ),
                 ],

@@ -26,12 +26,30 @@ class StorageService {
 
   // User details persistence
   static const String _userNameKey = 'armss_ott_user_name';
+  static const String _userEmailKey = 'armss_ott_user_email';
+  static const String _userTierKey = 'armss_ott_user_tier';
+
   Future<void> saveUserName(String name) async {
     await _prefs.setString(_userNameKey, name);
   }
 
   String? getUserName() {
     return _prefs.getString(_userNameKey);
+  }
+
+  Future<void> saveUser({
+    required String id,
+    required String name,
+    required String email,
+    required String subscriptionTier,
+  }) async {
+    await _prefs.setString(_userNameKey, name);
+    await _prefs.setString(_userEmailKey, email);
+    await _prefs.setString(_userTierKey, subscriptionTier);
+  }
+
+  String? getUserTier() {
+    return _prefs.getString(_userTierKey);
   }
 
   // Active Profile ID

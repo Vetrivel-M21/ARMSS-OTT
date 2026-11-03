@@ -106,6 +106,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             'All',
             if (navVisibility.films) 'Movies',
             if (navVisibility.series) 'Series',
+            'Short Films',
             if (navVisibility.live) 'Live TV',
           ];
 
@@ -127,6 +128,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             displayed = allowedTitles.where((t) => t.kind == 'film').toList();
           } else if (effectiveCategory == 'Series') {
             displayed = allowedTitles.where((t) => t.kind == 'series').toList();
+          } else if (effectiveCategory == 'Short Films') {
+            displayed = allowedTitles.where((t) => t.kind == 'short_film' || t.kind == 'short film' || t.genres.contains('Short Films')).toList();
           } else if (effectiveCategory == 'Live TV') {
             displayed = allowedTitles.where((t) => t.kind == 'live').toList();
           }
@@ -317,6 +320,45 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                               ContentRail(
                                 title: 'More Tamil Movies',
                                 items: moreMovies,
+                                onTitleTap: _onTitleTap,
+                              ),
+                          ],
+                        );
+                      }(),
+                    ] else if (_selectedCategory == 'Short Films') ...[
+                      () {
+                        final spotlight = takeFresh(displayed.where((t) => t.featured || t.original).toList());
+                        final trendingShorts = takeFresh(displayed.where((t) => t.trending).toList());
+                        final quickBites = takeFresh(displayed.where((t) => t.runtimeMin <= 20).toList());
+                        final moreShorts = takeFresh(displayed);
+
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            if (spotlight.isNotEmpty)
+                              ContentRail(
+                                title: 'Spotlight on Short Films',
+                                subtitle: 'Curated stories and festival selections',
+                                items: spotlight,
+                                onTitleTap: _onTitleTap,
+                              ),
+                            if (trendingShorts.isNotEmpty)
+                              ContentRail(
+                                title: 'Trending Indie Shorts',
+                                items: trendingShorts,
+                                onTitleTap: _onTitleTap,
+                              ),
+                            if (quickBites.isNotEmpty)
+                              ContentRail(
+                                title: 'Quick Bites (< 20 mins)',
+                                subtitle: 'Perfect for quick breaks',
+                                items: quickBites,
+                                onTitleTap: _onTitleTap,
+                              ),
+                            if (moreShorts.isNotEmpty)
+                              ContentRail(
+                                title: 'All Short Films & Specials',
+                                items: moreShorts,
                                 onTitleTap: _onTitleTap,
                               ),
                           ],

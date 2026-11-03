@@ -85,6 +85,10 @@ class AuthNotifier extends StateNotifier<AsyncValue<UserModel?>> {
     }
   }
 
+  void updateUser(UserModel user) {
+    state = AsyncValue.data(user);
+  }
+
   Future<void> logout() async {
     await authRepository.logout();
     state = const AsyncValue.data(null);

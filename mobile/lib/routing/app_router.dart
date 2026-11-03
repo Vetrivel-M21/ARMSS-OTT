@@ -12,6 +12,7 @@ import '../presentation/screens/search/search_screen.dart';
 import '../presentation/screens/live/live_tv_screen.dart';
 import '../presentation/screens/my_list/watchlist_screen.dart';
 import '../presentation/screens/settings/settings_screen.dart';
+import '../presentation/screens/subscription/plans_screen.dart';
 import '../presentation/screens/details/title_details_screen.dart';
 import '../presentation/screens/player/native_video_player_screen.dart';
 
@@ -112,6 +113,11 @@ final appRouter = GoRouter(
     ),
 
     // Full screen routes outside shell (no bottom nav)
+    GoRoute(
+      parentNavigatorKey: _rootNavigatorKey,
+      path: '/plans',
+      builder: (context, state) => const PlansScreen(),
+    ),
     GoRoute(
       parentNavigatorKey: _rootNavigatorKey,
       path: '/title/:id',

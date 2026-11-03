@@ -108,8 +108,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           _buildSettingsTile(
             icon: Icons.workspace_premium_rounded,
             title: 'Membership & Subscription',
-            subtitle: '$tier • Tap to view details & web upgrade',
-            onTap: () => _showSubscriptionDetailsModal(context, user),
+            subtitle: '$tier • Tap to view plans & upgrade',
+            onTap: () => context.push('/plans'),
           ),
           const SizedBox(height: 20),
 

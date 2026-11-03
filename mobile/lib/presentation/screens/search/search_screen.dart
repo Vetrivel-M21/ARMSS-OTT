@@ -19,8 +19,10 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   final List<String> _popularSearches = [
     'Action',
     'Trending Now',
-    'Series',
-    'New Releases',
+    'Short Films',
+    'ARMSS Originals',
+    '4K Ultra HD',
+    'Web Series',
     'Live TV',
     'Blockbusters',
   ];
@@ -29,10 +31,13 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     'Action',
     'Thriller',
     'Drama',
-    'Historical',
+    'Short Films',
+    'Comedy',
     'Crime',
+    'Documentary',
+    'Romance',
+    'Historical',
     'Live TV',
-    'Animation',
   ];
 
   @override

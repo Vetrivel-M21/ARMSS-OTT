@@ -89,8 +89,10 @@ class ApiConstants {
   static const String playbackTicket = '/playback-ticket';
   static const String progressHeartbeat = '/progress/heartbeat';
   static const String search = '/search';
+  static const String plans = '/plans';
   static const String subscriptionPlans = '/subscription/plans';
   static const String subscriptionCheckout = '/subscription/checkout';
+  static const String subscriptionUpgrade = '/subscription/upgrade';
   static const String settingsLayout = '/settings/layout';
 
   // Video Playback & ABR Endpoints
