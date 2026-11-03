@@ -8,6 +8,7 @@ class TopNavBar extends StatelessWidget {
   final Function(String) onCategorySelected;
   final VoidCallback onProfileTap;
   final VoidCallback onSearchTap;
+  final VoidCallback? onRefreshTap;
   final List<String>? categories;
 
   const TopNavBar({
@@ -16,6 +17,7 @@ class TopNavBar extends StatelessWidget {
     required this.onCategorySelected,
     required this.onProfileTap,
     required this.onSearchTap,
+    this.onRefreshTap,
     this.categories,
   });
 
@@ -79,6 +81,14 @@ class TopNavBar extends StatelessWidget {
                     ),
                   ),
                   const Spacer(),
+
+                  // Refresh icon
+                  if (onRefreshTap != null)
+                    IconButton(
+                      icon: const Icon(Icons.refresh_rounded, size: 22, color: AppColors.textPrimary),
+                      tooltip: 'Refresh Catalog',
+                      onPressed: onRefreshTap,
+                    ),
 
                   // Cast icon
                   IconButton(

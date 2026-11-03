@@ -55,3 +55,4 @@ class SubscriptionRepository {
 }
 
 final subscriptionRepository = SubscriptionRepository();
+

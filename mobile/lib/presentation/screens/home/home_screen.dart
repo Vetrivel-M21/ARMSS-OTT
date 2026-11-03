@@ -85,6 +85,28 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     context.push('/player/${title.id}');
   }
 
+  Future<void> _refreshCatalog() async {
+    try {
+      await catalogRepository.getTitles(refresh: true);
+      ref.invalidate(titlesProvider);
+      ref.invalidate(navVisibilityProvider);
+      ref.invalidate(featuredTitlesProvider);
+      ref.invalidate(trendingTitlesProvider);
+      ref.invalidate(top10TitlesProvider);
+      ref.invalidate(liveChannelsProvider);
+      await ref.read(titlesProvider.future);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Catalog refreshed with latest releases!'),
+            duration: Duration(seconds: 2),
+            backgroundColor: AppColors.surfaceElevated,
+          ),
+        );
+      }
+    } catch (_) {}
+  }
+
   @override
   Widget build(BuildContext context) {
     final titlesAsync = ref.watch(titlesProvider);
@@ -166,44 +188,66 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
           return Stack(
             children: [
-              // Scrollable content
-              SingleChildScrollView(
-                physics: const BouncingScrollPhysics(),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Hero Banner Carousel (shown when hero items exist)
-                    if (heroList.isNotEmpty)
-                      _buildHeroCarousel(heroList)
-                    else
-                      SizedBox(height: topNavClearance),
+              // Scrollable content with pull-to-refresh
+              RefreshIndicator(
+                color: AppColors.primary,
+                backgroundColor: AppColors.surfaceElevated,
+                displacement: topNavClearance + 15,
+                onRefresh: _refreshCatalog,
+                child: SingleChildScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Hero Banner Carousel (shown when hero items exist)
+                      if (heroList.isNotEmpty)
+                        _buildHeroCarousel(heroList)
+                      else
+                        SizedBox(height: topNavClearance),
 
-                    // Empty category feedback
-                    if (displayed.isEmpty)
-                      Padding(
-                        padding: EdgeInsets.only(top: topNavClearance + 20, left: 24, right: 24, bottom: 40),
-                        child: Center(
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Icon(Icons.movie_filter_outlined, size: 54, color: AppColors.textMuted),
-                              const SizedBox(height: 16),
-                              Text('No $_selectedCategory Available', style: AppTypography.sectionTitle(fontSize: 18)),
-                              const SizedBox(height: 8),
-                              Text(
-                                'Check back soon for new releases or explore all titles.',
-                                textAlign: TextAlign.center,
-                                style: AppTypography.body,
-                              ),
-                              const SizedBox(height: 16),
-                              ElevatedButton(
-                                onPressed: () => setState(() => _selectedCategory = 'All'),
-                                child: const Text('View All Titles'),
-                              ),
-                            ],
+                      // Empty category feedback
+                      if (displayed.isEmpty)
+                        Padding(
+                          padding: EdgeInsets.only(top: topNavClearance + 20, left: 24, right: 24, bottom: 40),
+                          child: Center(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.movie_filter_outlined, size: 54, color: AppColors.textMuted),
+                                const SizedBox(height: 16),
+                                Text('No $_selectedCategory Available', style: AppTypography.sectionTitle(fontSize: 18)),
+                                const SizedBox(height: 8),
+                                Text(
+                                  'Check back soon for new releases or tap below to refresh the catalog.',
+                                  textAlign: TextAlign.center,
+                                  style: AppTypography.body,
+                                ),
+                                const SizedBox(height: 16),
+                                Wrap(
+                                  spacing: 12,
+                                  runSpacing: 10,
+                                  alignment: WrapAlignment.center,
+                                  children: [
+                                    ElevatedButton.icon(
+                                      onPressed: _refreshCatalog,
+                                      icon: const Icon(Icons.refresh_rounded, size: 18),
+                                      label: const Text('Refresh Catalog'),
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: AppColors.primary,
+                                        foregroundColor: Colors.white,
+                                      ),
+                                    ),
+                                    if (_selectedCategory != 'All')
+                                      OutlinedButton(
+                                        onPressed: () => setState(() => _selectedCategory = 'All'),
+                                        child: const Text('View All Titles'),
+                                      ),
+                                  ],
+                                ),
+                              ],
+                            ),
                           ),
                         ),
-                      ),
 
                     // ── Category Specific Rails (Deduplicated) ──
                     if (_selectedCategory == 'Series') ...[
@@ -521,6 +565,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   ],
                 ),
               ),
+            ),
 
               // Floating Top Nav Bar
               Positioned(
@@ -535,6 +580,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   },
                   onProfileTap: () => context.go('/profiles'),
                   onSearchTap: () => context.go('/search'),
+                  onRefreshTap: _refreshCatalog,
                 ),
               ),
             ],
