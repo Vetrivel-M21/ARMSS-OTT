@@ -732,6 +732,20 @@ function LoginPage() {
               )}
             </div>
           )}
+
+          <div className="mt-6 flex items-center justify-center gap-4 text-xs text-muted">
+            <Link to="/privacy" className="hover:text-fg underline underline-offset-4">
+              Privacy Policy
+            </Link>
+            <span>·</span>
+            <Link to="/terms" className="hover:text-fg underline underline-offset-4">
+              Terms of Service
+            </Link>
+            <span>·</span>
+            <Link to="/delete-account" className="hover:text-live underline underline-offset-4">
+              Delete Account
+            </Link>
+          </div>
         </div>
       </div>
     </div>

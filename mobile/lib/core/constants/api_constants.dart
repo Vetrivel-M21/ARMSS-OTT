@@ -81,6 +81,8 @@ class ApiConstants {
   static const String forgotPassword = '/auth/forgot-password';
   static const String resetPassword = '/auth/reset-password';
   static const String me = '/auth/me';
+  static const String deleteAccount = '/auth/delete-account';
+  static const String deleteAccountRequest = '/auth/delete-account-request';
 
   static const String titles = '/titles';
   static const String profiles = '/profiles';

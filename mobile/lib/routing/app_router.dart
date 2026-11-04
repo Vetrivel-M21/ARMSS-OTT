@@ -15,6 +15,7 @@ import '../presentation/screens/settings/settings_screen.dart';
 import '../presentation/screens/subscription/plans_screen.dart';
 import '../presentation/screens/details/title_details_screen.dart';
 import '../presentation/screens/player/native_video_player_screen.dart';
+import '../presentation/screens/legal/privacy_policy_screen.dart';
 
 final GlobalKey<NavigatorState> _rootNavigatorKey = GlobalKey<NavigatorState>();
 
@@ -113,6 +114,11 @@ final appRouter = GoRouter(
     ),
 
     // Full screen routes outside shell (no bottom nav)
+    GoRoute(
+      parentNavigatorKey: _rootNavigatorKey,
+      path: '/privacy',
+      builder: (context, state) => const PrivacyPolicyScreen(),
+    ),
     GoRoute(
       parentNavigatorKey: _rootNavigatorKey,
       path: '/plans',

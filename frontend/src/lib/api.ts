@@ -988,6 +988,38 @@ export const api = {
       return [];
     }
   },
+
+  async deleteAccount(): Promise<{ success: boolean; message?: string }> {
+    try {
+      const res = await fetchWithAuth("/auth/delete-account", {
+        method: "DELETE",
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        return { success: false, message: data.error || "Failed to delete account" };
+      }
+      return { success: true, message: data.message };
+    } catch (err: any) {
+      return { success: false, message: err?.message || "Network error" };
+    }
+  },
+
+  async requestAccountDeletion(email: string, password: string): Promise<{ success: boolean; message?: string }> {
+    try {
+      const res = await fetch(`${API_BASE()}/auth/delete-account-request`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        return { success: false, message: data.error || "Failed to delete account" };
+      }
+      return { success: true, message: data.message };
+    } catch (err: any) {
+      return { success: false, message: err?.message || "Network error" };
+    }
+  },
 };
 
 export interface AdminPlan {

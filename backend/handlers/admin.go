@@ -689,14 +689,7 @@ func AdminDeleteUser(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"cannot delete your own admin account"}`, http.StatusForbidden)
 		return
 	}
-	// Clean up profiles, watchlist, etc.
-	_, _ = database.DB.Exec("DELETE FROM profiles WHERE user_id = ?", userID)
-	_, _ = database.DB.Exec("DELETE FROM watchlist WHERE user_id = ?", userID)
-	_, _ = database.DB.Exec("DELETE FROM watch_progress WHERE user_id = ?", userID)
-	_, _ = database.DB.Exec("DELETE FROM ratings WHERE user_id = ?", userID)
-
-	_, err := database.DB.Exec("DELETE FROM users WHERE id = ?", userID)
-	if err != nil {
+	if err := PurgeUserData(userID); err != nil {
 		http.Error(w, `{"error":"delete failed"}`, http.StatusInternalServerError)
 		return
 	}

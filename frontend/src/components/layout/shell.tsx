@@ -17,10 +17,16 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const profile = useAether((s) => s.activeProfile);
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const isLoginPage = pathname === "/login";
+  const isPublicRoute =
+    isLoginPage ||
+    pathname === "/privacy" ||
+    pathname === "/privacy-policy" ||
+    pathname === "/terms" ||
+    pathname === "/delete-account";
   const cinema = pathname.startsWith("/watch");
 
-  // Only the login page is accessible without being logged in
-  const requiresAuth = !isLoginPage;
+  // Only login and compliance pages are accessible without being logged in
+  const requiresAuth = !isPublicRoute;
 
   // Synchronous token verification check
   const hasToken = typeof window !== "undefined" ? Boolean(getToken()) : false;
@@ -69,7 +75,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
 
   // Authentication Guard: Redirect whenever not authenticated
   useEffect(() => {
-    if (isLoginPage) return;
+    if (isPublicRoute) return;
 
     // If client has confirmed no token or session check finished with no user
     if ((!hasToken && !boot) || (authChecked && !user)) {
@@ -78,10 +84,10 @@ export function Shell({ children }: { children: React.ReactNode }) {
         search: pathname !== "/" ? ({ redirect: pathname } as any) : undefined,
       });
     }
-  }, [isLoginPage, boot, authChecked, user, hasToken, pathname, navigate]);
+  }, [isPublicRoute, boot, authChecked, user, hasToken, pathname, navigate]);
 
-  // 1. If currently on login page, render clean login view directly
-  if (isLoginPage) {
+  // 1. If currently on login page or standalone public page without authentication
+  if (isLoginPage || (isPublicRoute && !isAuthenticated)) {
     return (
       <div className="min-h-svh bg-bg text-fg">
         <main>{children}</main>
@@ -91,6 +97,35 @@ export function Shell({ children }: { children: React.ReactNode }) {
 
   // 2. Initial Boot Screen: Block content while verifying session
   if (boot || !authChecked) {
+    if (isPublicRoute) {
+      return (
+        <div className="min-h-svh bg-bg text-fg">
+          <main>{children}</main>
+        </div>
+      );
+    }
+    return (
+      <div className="grid min-h-svh place-items-center bg-bg">
+        <div className="stagger-in flex flex-col items-center gap-3">
+          <Logo className="pointer-events-none" />
+          <div className="flex items-center gap-2 text-xs text-muted">
+            <span className="size-2 rounded-full bg-accent animate-ping" />
+            <span>Checking authentication...</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // 3. If unauthenticated, block content while redirecting to /login
+  if (!isAuthenticated) {
+    if (isPublicRoute) {
+      return (
+        <div className="min-h-svh bg-bg text-fg">
+          <main>{children}</main>
+        </div>
+      );
+    }
     return (
       <div className="grid min-h-svh place-items-center bg-bg">
         <div className="stagger-in flex flex-col items-center gap-3">

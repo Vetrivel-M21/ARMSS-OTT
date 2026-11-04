@@ -8,6 +8,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../../data/models/title_model.dart';
 import '../../../data/models/display_settings_model.dart';
+import '../../../data/repositories/catalog_repository.dart';
 import '../../../providers/catalog_provider.dart';
 import '../../../providers/watchlist_provider.dart';
 import '../../../core/storage/storage_service.dart';

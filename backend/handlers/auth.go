@@ -759,4 +759,90 @@ func cryptoRandInt(min, max int64) (int64, error) {
 	return nBig.Int64() + min, nil
 }
 
+// PurgeUserData removes all personal data and records for a user across the platform
+func PurgeUserData(userID string) error {
+	// Clean up related records
+	_, _ = database.DB.Exec("DELETE FROM profiles WHERE user_id = ?", userID)
+	_, _ = database.DB.Exec("DELETE FROM watchlist WHERE user_id = ?", userID)
+	_, _ = database.DB.Exec("DELETE FROM watch_progress WHERE user_id = ?", userID)
+	_, _ = database.DB.Exec("DELETE FROM ratings WHERE user_id = ?", userID)
+	_, _ = database.DB.Exec("DELETE FROM user_devices WHERE user_id = ?", userID)
+	_, _ = database.DB.Exec("DELETE FROM playback_sessions WHERE user_id = ?", userID)
+	_, _ = database.DB.Exec("DELETE FROM user_otps WHERE user_id = ?", userID)
+	_, _ = database.DB.Exec("DELETE FROM user_activity_logs WHERE user_id = ?", userID)
+	_, _ = database.DB.Exec("DELETE FROM payments WHERE user_id = ?", userID)
+
+	_, err := database.DB.Exec("DELETE FROM users WHERE id = ?", userID)
+	return err
+}
+
+// DeleteAccount — DELETE /api/auth/delete-account (Protected)
+// Allows an authenticated user to permanently delete their own account and all associated data
+func DeleteAccount(w http.ResponseWriter, r *http.Request) {
+	claims := middleware.GetUserFromContext(r)
+	if claims == nil || claims.UserID == "" {
+		http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+		return
+	}
+
+	if err := PurgeUserData(claims.UserID); err != nil {
+		http.Error(w, `{"error":"failed to delete account data"}`, http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": "Account and all associated personal data have been permanently deleted.",
+	})
+}
+
+// DeleteAccountRequest — POST /api/auth/delete-account-request (Public Web Deletion URL)
+// Used by users requesting deletion from the public web page (e.g., Google Play Account Deletion URL)
+func DeleteAccountRequest(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Email    string `json:"email"`
+		Password string `json:"password"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, `{"error":"invalid request format"}`, http.StatusBadRequest)
+		return
+	}
+
+	cleanEmail := strings.TrimSpace(strings.ToLower(req.Email))
+	if cleanEmail == "" || req.Password == "" {
+		http.Error(w, `{"error":"email and password are required to verify account ownership"}`, http.StatusBadRequest)
+		return
+	}
+
+	var userID, passwordHash string
+	err := database.DB.QueryRow("SELECT id, password_hash FROM users WHERE LOWER(email) = ?", cleanEmail).Scan(&userID, &passwordHash)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			http.Error(w, `{"error":"no account found with this email address"}`, http.StatusNotFound)
+			return
+		}
+		http.Error(w, `{"error":"database error"}`, http.StatusInternalServerError)
+		return
+	}
+
+	if err := bcrypt.CompareHashAndPassword([]byte(passwordHash), []byte(req.Password)); err != nil {
+		http.Error(w, `{"error":"invalid password"}`, http.StatusUnauthorized)
+		return
+	}
+
+	if err := PurgeUserData(userID); err != nil {
+		http.Error(w, `{"error":"failed to delete account"}`, http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": "Your account and all associated personal data have been permanently deleted.",
+	})
+}
+
+
 

@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { useAether } from "@/lib/store";
 import { cn } from "@/lib/utils";
@@ -236,6 +236,53 @@ function SettingsPage() {
               ? `${downloads.reduce((a, d) => a + d.sizeMb, 0).toFixed(0)} MB used · Downloads available offline on mobile`
               : "Download films and series to watch offline on your mobile."}
           </p>
+        </div>
+      </Section>
+
+      <Section title="Legal & Policy">
+        <div className="py-4 space-y-3 text-sm">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-fg font-medium">Privacy Policy</p>
+              <p className="text-xs text-muted">View data collection, security, and Cashfree payment compliance</p>
+            </div>
+            <Link
+              to="/privacy"
+              className="rounded-md border border-border px-3 py-1.5 text-xs font-medium text-accent hover:bg-accent/10 transition-colors"
+            >
+              View Policy
+            </Link>
+          </div>
+          <div className="h-px bg-border/60" />
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-fg font-medium">Terms of Service</p>
+              <p className="text-xs text-muted">Subscription terms, streaming licenses, and cancellation policy</p>
+            </div>
+            <Link
+              to="/terms"
+              className="rounded-md border border-border px-3 py-1.5 text-xs font-medium text-muted hover:text-fg hover:bg-elevated transition-colors"
+            >
+              View Terms
+            </Link>
+          </div>
+        </div>
+      </Section>
+
+      <Section title="Danger Zone">
+        <div className="flex items-start justify-between gap-6 py-4">
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-live">Delete Account</p>
+            <p className="mt-0.5 text-xs text-muted">
+              Permanently erase your account, profiles, viewing progress, and subscriptions. This action cannot be undone.
+            </p>
+          </div>
+          <Link
+            to="/delete-account"
+            className="shrink-0 rounded-md bg-live/10 border border-live/30 px-3 py-1.5 text-xs font-semibold text-live hover:bg-live hover:text-white transition-colors"
+          >
+            Delete Account
+          </Link>
         </div>
       </Section>
 

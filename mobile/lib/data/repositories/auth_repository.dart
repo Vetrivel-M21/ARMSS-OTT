@@ -284,6 +284,27 @@ class AuthRepository {
       await _googleSignIn.signOut();
     } catch (_) {}
   }
+
+  Future<void> deleteAccount() async {
+    try {
+      await apiClient.delete(ApiConstants.deleteAccount);
+    } on DioException catch (e) {
+      if (e.response?.statusCode != 404) {
+        final errorMsg = e.response?.data is Map
+            ? e.response?.data['error']?.toString()
+            : null;
+        if (errorMsg != null && errorMsg.isNotEmpty) {
+          throw Exception(errorMsg);
+        }
+      }
+    } finally {
+      _currentUser = null;
+      await storageService.clearSession();
+      try {
+        await _googleSignIn.signOut();
+      } catch (_) {}
+    }
+  }
 }
 
 final authRepository = AuthRepository();

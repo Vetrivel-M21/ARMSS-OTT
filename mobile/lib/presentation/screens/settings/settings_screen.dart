@@ -158,13 +158,26 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           _buildSettingsTile(
             icon: Icons.privacy_tip_outlined,
             title: 'Privacy Policy & Terms of Service',
-            onTap: () {},
+            subtitle: 'View Cashfree payment & DPDP policies',
+            onTap: () => context.push('/privacy'),
           ),
           _buildSettingsTile(
             icon: Icons.info_outline_rounded,
             title: 'About ARMSS OTT',
             subtitle: 'v1.0.0 (Native Mobile Edition)',
             onTap: () {},
+          ),
+          const SizedBox(height: 20),
+
+          // Account Management / Danger Zone
+          Text('Account Management', style: AppTypography.sectionTitle(fontSize: 14)),
+          const SizedBox(height: 8),
+          _buildSettingsTile(
+            icon: Icons.person_remove_outlined,
+            title: 'Delete Account Permanently',
+            subtitle: 'Erase profiles, watch history & subscriptions',
+            titleColor: AppColors.liveRed,
+            onTap: () => _showDeleteAccountConfirmation(context),
           ),
           const SizedBox(height: 24),
 
@@ -195,6 +208,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     required IconData icon,
     required String title,
     String? subtitle,
+    Color? titleColor,
     required VoidCallback onTap,
   }) {
     return Container(
@@ -206,10 +220,119 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       ),
       child: ListTile(
         onTap: onTap,
-        leading: Icon(icon, color: AppColors.textSecondary, size: 22),
-        title: Text(title, style: AppTypography.cardTitle.copyWith(fontSize: 14)),
+        leading: Icon(icon, color: titleColor ?? AppColors.textSecondary, size: 22),
+        title: Text(title, style: AppTypography.cardTitle.copyWith(fontSize: 14, color: titleColor)),
         subtitle: subtitle != null ? Text(subtitle, style: AppTypography.bodySmall) : null,
         trailing: const Icon(Icons.arrow_forward_ios_rounded, color: AppColors.textMuted, size: 14),
+      ),
+    );
+  }
+
+  void _showDeleteAccountConfirmation(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (dialogCtx) {
+        bool isDeleting = false;
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              backgroundColor: AppColors.surfaceElevated,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+                side: BorderSide(color: AppColors.liveRed.withOpacity(0.4)),
+              ),
+              title: Row(
+                children: [
+                  const Icon(Icons.warning_amber_rounded, color: AppColors.liveRed, size: 26),
+                  const SizedBox(width: 10),
+                  Text(
+                    'Delete Account?',
+                    style: AppTypography.cardTitle.copyWith(fontSize: 18, color: Colors.white),
+                  ),
+                ],
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'This action is irreversible. All of the following will be permanently erased immediately:',
+                    style: AppTypography.bodySmall.copyWith(color: AppColors.textSecondary),
+                  ),
+                  const SizedBox(height: 10),
+                  _buildBulletPoint('Your account login & profile credentials'),
+                  _buildBulletPoint('Viewing history & continue watching'),
+                  _buildBulletPoint('Watchlist & saved favorites'),
+                  _buildBulletPoint('Active subscription benefits'),
+                  const SizedBox(height: 12),
+                  Text(
+                    'In compliance with Google Play Store data safety policies, all personal identifiers are purged from our servers.',
+                    style: AppTypography.bodySmall.copyWith(color: AppColors.textMuted, fontSize: 11),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: isDeleting ? null : () => Navigator.of(dialogCtx).pop(),
+                  child: const Text('Cancel', style: TextStyle(color: Colors.white70)),
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.liveRed,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                  onPressed: isDeleting
+                      ? null
+                      : () async {
+                          setDialogState(() => isDeleting = true);
+                          final error = await ref.read(authProvider.notifier).deleteAccount();
+                          if (dialogCtx.mounted) Navigator.of(dialogCtx).pop();
+
+                          if (error != null) {
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text('Failed to delete account: $error')),
+                              );
+                            }
+                          } else {
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Account successfully deleted.')),
+                              );
+                              context.go('/login');
+                            }
+                          }
+                        },
+                  child: isDeleting
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                        )
+                      : const Text(
+                          'Delete Account',
+                          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                        ),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildBulletPoint(String text) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('• ', style: TextStyle(color: AppColors.liveRed, fontWeight: FontWeight.bold)),
+          Expanded(
+            child: Text(text, style: AppTypography.bodySmall.copyWith(fontSize: 12, color: Colors.white)),
+          ),
+        ],
       ),
     );
   }

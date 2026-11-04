@@ -12,14 +12,17 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as ComingSoonRouteImport } from './routes/coming-soon'
+import { Route as DeleteAccountRouteImport } from './routes/delete-account'
 import { Route as DownloadsRouteImport } from './routes/downloads'
 import { Route as HistoryRouteImport } from './routes/history'
 import { Route as LiveRouteImport } from './routes/live'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as MyListRouteImport } from './routes/my-list'
 import { Route as PlansRouteImport } from './routes/plans'
+import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as SearchRouteImport } from './routes/search'
 import { Route as SettingsRouteImport } from './routes/settings'
+import { Route as TermsRouteImport } from './routes/terms'
 import { Route as BrowseGenreRouteImport } from './routes/browse.$genre'
 import { Route as TitleIdRouteImport } from './routes/title.$id'
 import { Route as WatchIdRouteImport } from './routes/watch.$id'
@@ -37,6 +40,11 @@ const AdminRoute = AdminRouteImport.update({
 const ComingSoonRoute = ComingSoonRouteImport.update({
   id: '/coming-soon',
   path: '/coming-soon',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DeleteAccountRoute = DeleteAccountRouteImport.update({
+  id: '/delete-account',
+  path: '/delete-account',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DownloadsRoute = DownloadsRouteImport.update({
@@ -69,6 +77,11 @@ const PlansRoute = PlansRouteImport.update({
   path: '/plans',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PrivacyRoute = PrivacyRouteImport.update({
+  id: '/privacy',
+  path: '/privacy',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SearchRoute = SearchRouteImport.update({
   id: '/search',
   path: '/search',
@@ -77,6 +90,11 @@ const SearchRoute = SearchRouteImport.update({
 const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TermsRoute = TermsRouteImport.update({
+  id: '/terms',
+  path: '/terms',
   getParentRoute: () => rootRouteImport,
 } as any)
 const BrowseGenreRoute = BrowseGenreRouteImport.update({
@@ -99,14 +117,17 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/admin': typeof AdminRoute
   '/coming-soon': typeof ComingSoonRoute
+  '/delete-account': typeof DeleteAccountRoute
   '/downloads': typeof DownloadsRoute
   '/history': typeof HistoryRoute
   '/live': typeof LiveRoute
   '/login': typeof LoginRoute
   '/my-list': typeof MyListRoute
   '/plans': typeof PlansRoute
+  '/privacy': typeof PrivacyRoute
   '/search': typeof SearchRoute
   '/settings': typeof SettingsRoute
+  '/terms': typeof TermsRoute
   '/browse/$genre': typeof BrowseGenreRoute
   '/title/$id': typeof TitleIdRoute
   '/watch/$id': typeof WatchIdRoute
@@ -115,14 +136,17 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/admin': typeof AdminRoute
   '/coming-soon': typeof ComingSoonRoute
+  '/delete-account': typeof DeleteAccountRoute
   '/downloads': typeof DownloadsRoute
   '/history': typeof HistoryRoute
   '/live': typeof LiveRoute
   '/login': typeof LoginRoute
   '/my-list': typeof MyListRoute
   '/plans': typeof PlansRoute
+  '/privacy': typeof PrivacyRoute
   '/search': typeof SearchRoute
   '/settings': typeof SettingsRoute
+  '/terms': typeof TermsRoute
   '/browse/$genre': typeof BrowseGenreRoute
   '/title/$id': typeof TitleIdRoute
   '/watch/$id': typeof WatchIdRoute
@@ -132,14 +156,17 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/admin': typeof AdminRoute
   '/coming-soon': typeof ComingSoonRoute
+  '/delete-account': typeof DeleteAccountRoute
   '/downloads': typeof DownloadsRoute
   '/history': typeof HistoryRoute
   '/live': typeof LiveRoute
   '/login': typeof LoginRoute
   '/my-list': typeof MyListRoute
   '/plans': typeof PlansRoute
+  '/privacy': typeof PrivacyRoute
   '/search': typeof SearchRoute
   '/settings': typeof SettingsRoute
+  '/terms': typeof TermsRoute
   '/browse/$genre': typeof BrowseGenreRoute
   '/title/$id': typeof TitleIdRoute
   '/watch/$id': typeof WatchIdRoute
@@ -150,14 +177,17 @@ export interface FileRouteTypes {
     | '/'
     | '/admin'
     | '/coming-soon'
+    | '/delete-account'
     | '/downloads'
     | '/history'
     | '/live'
     | '/login'
     | '/my-list'
     | '/plans'
+    | '/privacy'
     | '/search'
     | '/settings'
+    | '/terms'
     | '/browse/$genre'
     | '/title/$id'
     | '/watch/$id'
@@ -166,14 +196,17 @@ export interface FileRouteTypes {
     | '/'
     | '/admin'
     | '/coming-soon'
+    | '/delete-account'
     | '/downloads'
     | '/history'
     | '/live'
     | '/login'
     | '/my-list'
     | '/plans'
+    | '/privacy'
     | '/search'
     | '/settings'
+    | '/terms'
     | '/browse/$genre'
     | '/title/$id'
     | '/watch/$id'
@@ -182,14 +215,17 @@ export interface FileRouteTypes {
     | '/'
     | '/admin'
     | '/coming-soon'
+    | '/delete-account'
     | '/downloads'
     | '/history'
     | '/live'
     | '/login'
     | '/my-list'
     | '/plans'
+    | '/privacy'
     | '/search'
     | '/settings'
+    | '/terms'
     | '/browse/$genre'
     | '/title/$id'
     | '/watch/$id'
@@ -199,14 +235,17 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AdminRoute: typeof AdminRoute
   ComingSoonRoute: typeof ComingSoonRoute
+  DeleteAccountRoute: typeof DeleteAccountRoute
   DownloadsRoute: typeof DownloadsRoute
   HistoryRoute: typeof HistoryRoute
   LiveRoute: typeof LiveRoute
   LoginRoute: typeof LoginRoute
   MyListRoute: typeof MyListRoute
   PlansRoute: typeof PlansRoute
+  PrivacyRoute: typeof PrivacyRoute
   SearchRoute: typeof SearchRoute
   SettingsRoute: typeof SettingsRoute
+  TermsRoute: typeof TermsRoute
   BrowseGenreRoute: typeof BrowseGenreRoute
   TitleIdRoute: typeof TitleIdRoute
   WatchIdRoute: typeof WatchIdRoute
@@ -233,6 +272,13 @@ declare module '@tanstack/react-router' {
       path: '/coming-soon'
       fullPath: '/coming-soon'
       preLoaderRoute: typeof ComingSoonRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/delete-account': {
+      id: '/delete-account'
+      path: '/delete-account'
+      fullPath: '/delete-account'
+      preLoaderRoute: typeof DeleteAccountRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/downloads': {
@@ -277,6 +323,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PlansRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/privacy': {
+      id: '/privacy'
+      path: '/privacy'
+      fullPath: '/privacy'
+      preLoaderRoute: typeof PrivacyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/search': {
       id: '/search'
       path: '/search'
@@ -289,6 +342,13 @@ declare module '@tanstack/react-router' {
       path: '/settings'
       fullPath: '/settings'
       preLoaderRoute: typeof SettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/terms': {
+      id: '/terms'
+      path: '/terms'
+      fullPath: '/terms'
+      preLoaderRoute: typeof TermsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/browse/$genre': {
@@ -319,14 +379,17 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AdminRoute: AdminRoute,
   ComingSoonRoute: ComingSoonRoute,
+  DeleteAccountRoute: DeleteAccountRoute,
   DownloadsRoute: DownloadsRoute,
   HistoryRoute: HistoryRoute,
   LiveRoute: LiveRoute,
   LoginRoute: LoginRoute,
   MyListRoute: MyListRoute,
   PlansRoute: PlansRoute,
+  PrivacyRoute: PrivacyRoute,
   SearchRoute: SearchRoute,
   SettingsRoute: SettingsRoute,
+  TermsRoute: TermsRoute,
   BrowseGenreRoute: BrowseGenreRoute,
   TitleIdRoute: TitleIdRoute,
   WatchIdRoute: WatchIdRoute,

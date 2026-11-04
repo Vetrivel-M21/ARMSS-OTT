@@ -140,6 +140,7 @@ func main() {
 		r.Post("/auth/forgot-password/request", handlers.ForgotPasswordRequest)
 		r.Post("/auth/reset-password", handlers.ForgotPasswordReset)
 		r.Post("/auth/forgot-password/reset", handlers.ForgotPasswordReset)
+		r.Post("/auth/delete-account-request", handlers.DeleteAccountRequest)
 
 		// Public Profiles & Fallback
 		r.With(middleware.OptionalAuth).Get("/profiles", handlers.GetProfiles)
@@ -167,6 +168,7 @@ func main() {
 
 			// Current User info
 			r.Get("/auth/me", handlers.Me)
+			r.Delete("/auth/delete-account", handlers.DeleteAccount)
 
 			// Profiles Management
 			r.Post("/profiles", handlers.CreateProfile)

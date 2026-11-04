@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../data/models/title_model.dart';
 import '../data/models/display_settings_model.dart';
 import '../data/repositories/catalog_repository.dart';
+export '../data/repositories/catalog_repository.dart';
 
 final navVisibilityProvider = FutureProvider<NavVisibilityModel>((ref) async {
   return await catalogRepository.getNavVisibility();
