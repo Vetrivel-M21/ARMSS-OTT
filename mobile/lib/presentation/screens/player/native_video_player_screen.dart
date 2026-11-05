@@ -272,6 +272,7 @@ class _NativeVideoPlayerScreenState extends ConsumerState<NativeVideoPlayerScree
         showControls: true,
         customControls: ArmssPlayerControls(
           fallbackDuration: effectiveDur,
+          durationResolver: () => _effectiveDuration,
           onOpenOptions: _showQualitySheet,
         ),
         deviceOrientationsOnEnterFullScreen: const [
@@ -404,24 +405,26 @@ class _NativeVideoPlayerScreenState extends ConsumerState<NativeVideoPlayerScree
     final streamDur = _videoPlayerController?.value.duration ?? Duration.zero;
     if (streamDur > Duration.zero) return streamDur;
 
-    // 1. Episode runtime check
-    if (_currentEpisodeId != null) {
-      final title = ref.read(titleDetailProvider(widget.titleId)).value;
-      if (title != null && title.episodes.isNotEmpty) {
-        final ep = title.episodes.where((e) => e.id == _currentEpisodeId).firstOrNull;
+    final title = ref.read(titleDetailProvider(widget.titleId)).value;
+    if (title != null) {
+      // 1. Episode runtime check (if series)
+      if (title.kind == 'series' && title.episodes.isNotEmpty) {
+        final ep = _currentEpisodeId != null
+            ? title.episodes.where((e) => e.id == _currentEpisodeId).firstOrNull
+            : title.episodes.first;
         if (ep != null && ep.runtime > 0) {
           return Duration(minutes: ep.runtime);
         }
+        return const Duration(minutes: 45);
+      }
+
+      // 2. Movie/film runtime check
+      if (title.runtimeMin > 0) {
+        return Duration(minutes: title.runtimeMin);
       }
     }
 
-    // 2. Movie title runtime check
-    final title = ref.read(titleDetailProvider(widget.titleId)).value;
-    if (title != null && title.runtimeMin > 0) {
-      return Duration(minutes: title.runtimeMin);
-    }
-
-    return Duration.zero;
+    return const Duration(minutes: 45);
   }
 
   void _startHeartbeatTimer() {

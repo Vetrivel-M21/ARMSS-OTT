@@ -4,20 +4,44 @@ import { AuthProvider } from "@/lib/auth/provider";
 import { Shell } from "@/components/layout/shell";
 import appCss from "../styles.css?url";
 
-const APP_NAME = "ARMSS-OTT";
+const APP_NAME = "AURA";
 
 export const Route = createRootRoute({
   head: () => ({
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: APP_NAME },
+      { title: "AURA — Watch Movies, Series & Originals" },
       {
         name: "description",
         content:
-          "ARMSS-OTT — A premium streaming platform for cinema, original series, live sports, and 4K entertainment.",
+          "AURA — A premium streaming platform for cinema, original series, live sports, and 4K entertainment.",
       },
       { name: "theme-color", content: "#070708" },
+      // OpenGraph (WhatsApp, Telegram, Facebook, LinkedIn previews)
+      { property: "og:site_name", content: "AURA" },
+      { property: "og:type", content: "website" },
+      { property: "og:url", content: "https://aurapictures.online" },
+      { property: "og:title", content: "AURA — Watch Movies, Series & Originals" },
+      {
+        property: "og:description",
+        content:
+          "Stream cinema, original series, live entertainment, and 4K movies on AURA.",
+      },
+      { property: "og:image", content: "https://aurapictures.online/logo.png" },
+      { property: "og:image:secure_url", content: "https://aurapictures.online/logo.png" },
+      { property: "og:image:type", content: "image/png" },
+      { property: "og:image:width", content: "1200" },
+      { property: "og:image:height", content: "630" },
+      // Twitter Card previews
+      { name: "twitter:card", content: "summary_large_image" },
+      { name: "twitter:title", content: "AURA — Watch Movies, Series & Originals" },
+      {
+        name: "twitter:description",
+        content:
+          "Stream cinema, original series, live entertainment, and 4K movies on AURA.",
+      },
+      { name: "twitter:image", content: "https://aurapictures.online/logo.png" },
     ],
     links: [
       { rel: "icon", type: "image/png", href: "/logo.png" },

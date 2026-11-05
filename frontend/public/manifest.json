@@ -1,7 +1,7 @@
 {
-  "name": "ARMSS-OTT",
-  "short_name": "ARMSS-OTT",
-  "description": "ARMSS-OTT — A premium streaming platform for cinema, original series, live sports, and 4K entertainment.",
+  "name": "AURA",
+  "short_name": "AURA",
+  "description": "AURA — A premium streaming platform for cinema, original series, live sports, and 4K entertainment.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

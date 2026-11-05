@@ -19,11 +19,13 @@ import '../../../core/theme/app_typography.dart';
 /// - Integrated Mute, Fullscreen, and Options menu triggers.
 class ArmssPlayerControls extends StatefulWidget {
   final Duration fallbackDuration;
+  final Duration Function()? durationResolver;
   final VoidCallback? onOpenOptions;
 
   const ArmssPlayerControls({
     super.key,
-    required this.fallbackDuration,
+    this.fallbackDuration = Duration.zero,
+    this.durationResolver,
     this.onOpenOptions,
   });
 
@@ -70,8 +72,12 @@ class _ArmssPlayerControlsState extends State<ArmssPlayerControls> {
   Duration get _effectiveDuration {
     final streamDur = _videoController?.value.duration ?? Duration.zero;
     if (streamDur > Duration.zero) return streamDur;
+    if (widget.durationResolver != null) {
+      final resolved = widget.durationResolver!();
+      if (resolved > Duration.zero) return resolved;
+    }
     if (widget.fallbackDuration > Duration.zero) return widget.fallbackDuration;
-    return Duration.zero;
+    return const Duration(minutes: 45);
   }
 
   void _resetHideTimer() {

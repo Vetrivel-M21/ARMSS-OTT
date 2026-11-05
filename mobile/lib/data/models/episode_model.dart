@@ -33,11 +33,12 @@ class EpisodeModel {
               ? json['number']
               : int.tryParse('${json['episode_number'] ?? json['number']}') ?? 1),
       title: json['title'] ?? '',
-      runtime: json['runtime_min'] is int
-          ? json['runtime_min']
-          : (json['runtime'] is int
-              ? json['runtime']
-              : int.tryParse('${json['runtime_min'] ?? json['runtime']}') ?? 45),
+      runtime: () {
+        final raw = json['runtime_min'] ?? json['runtime'] ?? json['duration'];
+        final parsed = raw is int ? raw : int.tryParse('$raw');
+        if (parsed != null && parsed > 0) return parsed;
+        return 45;
+      }(),
       synopsis: json['synopsis'] ?? '',
       videoUrl: json['video_url'] ?? json['videoUrl'],
       thumbnailUrl: json['thumbnail_url'] ?? json['thumbnailUrl'],

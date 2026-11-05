@@ -95,7 +95,12 @@ class TitleModel {
       kind: json['kind'] ?? 'film',
       year: json['year'] is int ? json['year'] : int.tryParse('${json['year']}') ?? 2024,
       maturity: json['maturity'] ?? '13+',
-      runtimeMin: json['runtimeMin'] is int ? json['runtimeMin'] : int.tryParse('${json['runtimeMin']}') ?? 120,
+      runtimeMin: () {
+        final raw = json['runtime_min'] ?? json['runtimeMin'] ?? json['duration'];
+        final parsed = raw is int ? raw : int.tryParse('$raw');
+        if (parsed != null && parsed > 0) return parsed;
+        return (json['kind'] == 'series') ? 45 : 120;
+      }(),
       seasons: json['seasons'] is int ? json['seasons'] : int.tryParse('${json['seasons']}'),
       genres: (json['genres'] as List? ?? []).map((e) => e.toString()).toList(),
       logline: json['logline'] ?? '',
