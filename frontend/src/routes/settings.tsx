@@ -290,7 +290,7 @@ function SettingsPage() {
         <div className="py-4 space-y-2">
           <div className="flex justify-between text-sm">
             <span className="text-muted">Platform</span>
-            <span className="text-fg">ARMSS OTT</span>
+            <span className="text-fg">AURA</span>
           </div>
           <div className="flex justify-between text-sm">
             <span className="text-muted">Version</span>

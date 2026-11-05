@@ -266,7 +266,16 @@ func RewriteRenditionPlaylist(
 		outLines = append(outLines, line)
 	}
 
-	return strings.Join(outLines, "\n") + "\n", nil
+	result := strings.Join(outLines, "\n")
+	// Ensure VOD playlist tags are present so ExoPlayer / AVPlayer correctly recognise
+	// the stream as a finite VOD with complete seekable duration.
+	if !strings.Contains(result, "#EXT-X-PLAYLIST-TYPE:") {
+		result = strings.Replace(result, "#EXTM3U", "#EXTM3U\n#EXT-X-PLAYLIST-TYPE:VOD", 1)
+	}
+	if !strings.Contains(result, "#EXT-X-ENDLIST") {
+		result += "\n#EXT-X-ENDLIST"
+	}
+	return result + "\n", nil
 }
 
 // ResolveRenditionFilename maps human-readable resolution names (e.g. "1080p", "720p", "480p", "360p")

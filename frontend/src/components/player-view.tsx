@@ -125,7 +125,7 @@ export function PlayerView({
   // Unauthenticated user guard: redirect to /login immediately
   useEffect(() => {
     if (!user) {
-      toast.info("Please sign in to watch videos on ARMSS OTT.");
+      toast.info("Please sign in to watch videos on AURA.");
       void navigate({ to: "/login", search: { redirect: `/watch/${title.id}` } as any });
     }
   }, [user, navigate, title.id]);

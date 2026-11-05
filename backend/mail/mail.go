@@ -96,7 +96,7 @@ type birdMessagePayload struct {
 func sendViaBird(apiKey, to, subject, contentType, body string) error {
 	endpoint := getEnv("BIRD_API_URL", "https://eu1.platform.bird.com/v1/email/messages")
 	fromEmail := getEnv("BIRD_FROM_EMAIL", "noreply@arminfo.in")
-	fromName := getEnv("BIRD_FROM_NAME", "ARMSS OTT")
+	fromName := getEnv("BIRD_FROM_NAME", "AURA")
 
 	payload := birdMessagePayload{
 		From: birdAddress{
@@ -187,7 +187,7 @@ func sendViaSMTP(host, port, user, pass, from, to, subject, contentType, body st
 	}
 
 	now := time.Now()
-	msg := fmt.Sprintf("From: ARMSS OTT <%s>\r\nTo: %s\r\nSubject: %s\r\nDate: %s\r\nMIME-Version: 1.0\r\nContent-Type: %s; charset=UTF-8\r\n\r\n%s",
+	msg := fmt.Sprintf("From: AURA <%s>\r\nTo: %s\r\nSubject: %s\r\nDate: %s\r\nMIME-Version: 1.0\r\nContent-Type: %s; charset=UTF-8\r\n\r\n%s",
 		from, to, subject, now.Format(time.RFC1123Z), contentType, body)
 
 	if _, err := w.Write([]byte(msg)); err != nil {

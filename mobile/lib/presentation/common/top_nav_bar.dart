@@ -63,7 +63,7 @@ class TopNavBar extends StatelessWidget {
                         borderRadius: BorderRadius.circular(5),
                       ),
                       child: Text(
-                        'ARMSS',
+                        'AURA',
                         style: AppTypography.badge.copyWith(
                           color: Colors.white,
                           fontWeight: FontWeight.w900,
@@ -74,7 +74,7 @@ class TopNavBar extends StatelessWidget {
                   ),
                   const SizedBox(width: 8),
                   Text(
-                    'ARMSS OTT',
+                    'AURA',
                     style: AppTypography.heroTitle(fontSize: 16, fontWeight: FontWeight.w900).copyWith(
                       color: Colors.white,
                       letterSpacing: 1.2,

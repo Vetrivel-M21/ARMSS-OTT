@@ -136,7 +136,7 @@ class PosterCard extends StatelessWidget {
                           const Positioned(
                             top: 6,
                             left: 6,
-                            child: BadgeChip(label: 'ARMSS', isGold: true),
+                            child: BadgeChip(label: 'AURA', isGold: true),
                           ),
 
                         // Progress bar if continue watching

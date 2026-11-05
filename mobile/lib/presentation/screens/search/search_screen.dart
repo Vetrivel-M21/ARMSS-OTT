@@ -20,7 +20,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     'Action',
     'Trending Now',
     'Short Films',
-    'ARMSS Originals',
+    'Aura Originals',
     '4K Ultra HD',
     'Web Series',
     'Live TV',

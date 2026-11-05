@@ -106,7 +106,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       ),
                       const SizedBox(height: 12),
                       Text(
-                        'ARMSS OTT',
+                        'AURA',
                         style: AppTypography.heroTitle(fontSize: 24, fontWeight: FontWeight.w900).copyWith(
                           letterSpacing: 2.0,
                           color: Colors.white,
@@ -266,7 +266,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Text("New to ARMSS OTT? ", style: AppTypography.bodySmall),
+                    Text("New to AURA? ", style: AppTypography.bodySmall),
                     GestureDetector(
                       onTap: () => context.push('/register'),
                       child: Text(

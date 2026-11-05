@@ -61,7 +61,7 @@ export function TermsPage() {
             <section className="space-y-3">
               <h2 className="text-lg font-semibold text-fg">1. Acceptance of Terms</h2>
               <p>
-                By accessing or using <strong className="text-fg">ARMSS OTT</strong> (&quot;the Service&quot;), provided by <strong className="text-fg">Aura Pictures</strong>, you agree to be bound by these Terms of Service. If you do not agree to these terms, please do not use the Service.
+                By accessing or using <strong className="text-fg">AURA</strong> (&quot;the Service&quot;), provided by <strong className="text-fg">Aura Pictures</strong>, you agree to be bound by these Terms of Service. If you do not agree to these terms, please do not use the Service.
               </p>
             </section>
 
@@ -87,7 +87,7 @@ export function TermsPage() {
             <section className="space-y-3">
               <h2 className="text-lg font-semibold text-fg">4. Content Usage &amp; Intellectual Property</h2>
               <p>
-                All videos, audio tracks, graphics, logos, and software made available through ARMSS OTT are the property of Aura Pictures or its licensors. You are granted a limited, personal, non-commercial license to view content. Any downloading, recording, or redistributing outside official app features is strictly prohibited.
+                All videos, audio tracks, graphics, logos, and software made available through AURA are the property of Aura Pictures or its licensors. You are granted a limited, personal, non-commercial license to view content. Any downloading, recording, or redistributing outside official app features is strictly prohibited.
               </p>
             </section>
 
@@ -116,7 +116,7 @@ export function TermsPage() {
         </div>
 
         <div className="mt-8 text-center text-xs text-muted">
-          <p>&copy; {new Date().getFullYear()} ARMSS OTT · Aura Pictures. All rights reserved.</p>
+          <p>&copy; {new Date().getFullYear()} AURA · Aura Pictures. All rights reserved.</p>
         </div>
       </main>
     </div>

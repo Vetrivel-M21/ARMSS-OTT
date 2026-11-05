@@ -5,7 +5,7 @@ export function Mark({ className }: { className?: string }) {
   return (
     <img
       src="/logo.png"
-      alt="ARMSS OTT"
+      alt="AURA"
       className={cn("size-8 object-contain drop-shadow-[0_2px_8px_rgba(255,100,50,0.35)]", className)}
     />
   );

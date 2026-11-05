@@ -282,7 +282,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                               ),
                             if (originalsSeries.isNotEmpty)
                               ContentRail(
-                                title: 'ARMSS Originals',
+                                title: 'Aura Originals',
                                 items: originalsSeries,
                                 onTitleTap: _onTitleTap,
                               ),
@@ -339,7 +339,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                               ),
                             if (originalsMovies.isNotEmpty)
                               ContentRail(
-                                title: 'ARMSS Exclusives & Originals',
+                                title: 'Aura Exclusives & Originals',
                                 items: originalsMovies,
                                 onTitleTap: _onTitleTap,
                               ),
@@ -485,7 +485,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                             // ARMSS Originals
                             if (originalsAll.isNotEmpty)
                               ContentRail(
-                                title: 'ARMSS Exclusives & Originals',
+                                title: 'Aura Exclusives & Originals',
                                 items: originalsAll,
                                 onTitleTap: _onTitleTap,
                               ),
@@ -747,7 +747,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
                             if (item.original) ...[
-                              const BadgeChip(label: 'ARMSS ORIGINAL', isGold: true),
+                              const BadgeChip(label: 'AURA ORIGINAL', isGold: true),
                               const SizedBox(width: 8),
                             ],
                             BadgeChip(label: '${item.match}% Match'),

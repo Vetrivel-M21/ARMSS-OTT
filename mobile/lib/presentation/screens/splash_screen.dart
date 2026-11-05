@@ -91,7 +91,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen> with SingleTickerPr
                         ],
                       ),
                       child: Text(
-                        'ARMSS',
+                        'AURA',
                         style: AppTypography.heroTitle(fontSize: 34, fontWeight: FontWeight.w900).copyWith(
                           letterSpacing: 4.0,
                           color: Colors.white,

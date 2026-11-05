@@ -379,7 +379,7 @@ class _PlansScreenState extends ConsumerState<PlansScreen> {
                 _buildFeatureRow('Ad-Free Cinema & Series', plan.adFree),
                 _buildFeatureRow('Offline Video Downloads', plan.downloads),
                 _buildFeatureRow('Live TV & Sports Streaming', plan.liveSports),
-                _buildFeatureRow('Exclusive ARMSS Originals', plan.originals),
+                _buildFeatureRow('Exclusive Aura Originals', plan.originals),
                 const SizedBox(height: 16),
 
                 // Action Button

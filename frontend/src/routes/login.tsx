@@ -185,7 +185,7 @@ function LoginPage() {
       setLoading(true);
       try {
         const res = await api.register(email.trim(), password, name.trim());
-        handleFinishAuth(res.user, `Account created! Welcome to ARMSS OTT, ${res.user.name}.`);
+        handleFinishAuth(res.user, `Account created! Welcome to AURA, ${res.user.name}.`);
       } catch (err: any) {
         setError(err.message || "Registration failed. Please check your details.");
       } finally {
@@ -271,7 +271,7 @@ function LoginPage() {
             <Link to="/" className="inline-flex items-center gap-3 group">
               <img
                 src="/logo.png"
-                alt="ARMSS OTT Logo"
+                alt="AURA Logo"
                 className="size-10 sm:size-12 object-contain drop-shadow-[0_4px_16px_rgba(255,80,30,0.4)] transition-transform duration-300 group-hover:scale-105"
               />
               <span className="font-display italic text-3xl sm:text-4xl tracking-tight text-fg group-hover:text-accent transition-colors flex items-center">
@@ -388,7 +388,7 @@ function LoginPage() {
                 ? "Sign in with your account to watch this title in full quality."
                 : mode === "login"
                 ? "Sign in with your email or username to access your synchronized watchlist."
-                : "Fill in your details below to activate your ARMSS OTT streaming membership."}
+                : "Fill in your details below to activate your AURA streaming membership."}
             </p>
           </div>
 

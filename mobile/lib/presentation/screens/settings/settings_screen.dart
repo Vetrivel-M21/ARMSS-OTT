@@ -29,7 +29,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         ? activeProfile.name
         : ((user != null && user.name.isNotEmpty)
             ? user.name
-            : (storageService.getUserName() ?? 'ARMSS Member'));
+            : (storageService.getUserName() ?? 'Aura Member'));
     final email = (user != null && user.email.isNotEmpty) ? user.email : 'Streaming Account';
     final tier = (user != null && user.subscriptionTier.isNotEmpty)
         ? '${user.subscriptionTier.toUpperCase()} PLAN'
@@ -163,7 +163,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           ),
           _buildSettingsTile(
             icon: Icons.info_outline_rounded,
-            title: 'About ARMSS OTT',
+            title: 'About AURA',
             subtitle: 'v1.0.0 (Native Mobile Edition)',
             onTap: () {},
           ),

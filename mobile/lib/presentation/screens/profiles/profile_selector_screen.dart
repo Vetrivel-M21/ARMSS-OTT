@@ -45,7 +45,7 @@ class _ProfileSelectorScreenState extends State<ProfileSelectorScreen> {
       backgroundColor: AppColors.background,
       appBar: AppBar(
         title: Text(
-          'ARMSS OTT',
+          'AURA',
           style: AppTypography.heroTitle(fontSize: 18, fontWeight: FontWeight.w900).copyWith(
             color: AppColors.primary,
             letterSpacing: 2.0,

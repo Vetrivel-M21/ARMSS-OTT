@@ -62,7 +62,7 @@ export function PrivacyPolicyPage() {
             <section className="space-y-3">
               <h2 className="text-lg font-semibold text-fg">1. Overview & Commitment</h2>
               <p>
-                Welcome to <strong className="text-fg">ARMSS OTT</strong> (&quot;Platform&quot;, &quot;we&quot;, &quot;us&quot;, or &quot;our&quot;), operated by <strong className="text-fg">Aura Pictures</strong>. We are committed to protecting the privacy, personal data, and rights of our viewers across our web platform, mobile applications, and connected TV devices.
+                Welcome to <strong className="text-fg">AURA</strong> (&quot;Platform&quot;, &quot;we&quot;, &quot;us&quot;, or &quot;our&quot;), operated by <strong className="text-fg">Aura Pictures</strong>. We are committed to protecting the privacy, personal data, and rights of our viewers across our web platform, mobile applications, and connected TV devices.
               </p>
               <p>
                 This Privacy Policy outlines how we collect, handle, store, and safeguard your personal information in accordance with applicable Indian laws, including the Information Technology Act, 2000, the Digital Personal Data Protection (DPDP) Act, and international digital privacy standards.
@@ -107,10 +107,10 @@ export function PrivacyPolicyPage() {
                 <h2 className="text-base font-semibold">3. Payment &amp; Financial Security (Cashfree &amp; Razorpay)</h2>
               </div>
               <p>
-                All subscription payments on ARMSS OTT are processed exclusively through Reserve Bank of India (RBI) authorized, PCI-DSS Level 1 compliant payment gateways, including <strong className="text-fg">Cashfree Payments</strong> and <strong className="text-fg">Razorpay</strong>.
+                All subscription payments on AURA are processed exclusively through Reserve Bank of India (RBI) authorized, PCI-DSS Level 1 compliant payment gateways, including <strong className="text-fg">Cashfree Payments</strong> and <strong className="text-fg">Razorpay</strong>.
               </p>
               <ul className="list-inside list-disc space-y-1 text-xs">
-                <li><strong className="text-fg">Zero Card Storage:</strong> ARMSS OTT servers NEVER receive, process, or store your credit card or debit card numbers, expiration dates, or CVV codes.</li>
+                <li><strong className="text-fg">Zero Card Storage:</strong> AURA servers NEVER receive, process, or store your credit card or debit card numbers, expiration dates, or CVV codes.</li>
                 <li><strong className="text-fg">Direct Tokenization:</strong> All card, UPI, net banking, and wallet transactions take place directly on encrypted bank/gateway checkout interfaces.</li>
                 <li><strong className="text-fg">Order Records:</strong> We only store merchant transaction references (Order ID, Payment ID, Plan Tier, Amount, and Status) for receipt issuance and subscription fulfillment.</li>
               </ul>
@@ -146,7 +146,7 @@ export function PrivacyPolicyPage() {
                 <h2 className="text-base font-semibold">5. Account Deletion &amp; Right to Erasure (Google Play Compliant)</h2>
               </div>
               <p>
-                In strict compliance with Google Play Developer Policies and global data privacy standards, all ARMSS OTT users have the absolute right to request the permanent deletion of their account and all associated personal data at any time.
+                In strict compliance with Google Play Developer Policies and global data privacy standards, all AURA users have the absolute right to request the permanent deletion of their account and all associated personal data at any time.
               </p>
               <p className="text-xs">
                 You can delete your account through two convenient methods:
@@ -193,7 +193,7 @@ export function PrivacyPolicyPage() {
               </p>
               <div className="mt-2 space-y-1 text-xs text-fg">
                 <p><strong>Grievance Officer:</strong> Data Protection &amp; Privacy Compliance Officer</p>
-                <p><strong>Entity:</strong> Aura Pictures / ARMSS OTT</p>
+                <p><strong>Entity:</strong> Aura Pictures / AURA</p>
                 <p><strong>Email:</strong> <a href="mailto:armssinfotech@gmail.com" className="text-accent underline">armssinfotech@gmail.com</a></p>
                 <p><strong>Turnaround Time:</strong> Grievances will be addressed within 30 days as prescribed under the Information Technology Rules.</p>
               </div>
@@ -203,7 +203,7 @@ export function PrivacyPolicyPage() {
 
         {/* Footer info */}
         <div className="mt-8 text-center text-xs text-muted">
-          <p>&copy; {new Date().getFullYear()} ARMSS OTT · Aura Pictures. All rights reserved.</p>
+          <p>&copy; {new Date().getFullYear()} AURA · Aura Pictures. All rights reserved.</p>
         </div>
       </main>
     </div>

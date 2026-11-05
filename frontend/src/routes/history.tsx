@@ -167,7 +167,7 @@ function HistoryPage() {
             Watch History
           </h1>
           <p className="mt-2 text-sm text-muted">
-            Track and manage movies, web series, and episodes you have streamed on ARMSS OTT.
+            Track and manage movies, web series, and episodes you have streamed on AURA.
           </p>
         </div>
 
@@ -265,7 +265,7 @@ function HistoryPage() {
           </h3>
           <p className="mt-2 text-xs text-muted leading-relaxed">
             {items.length === 0
-              ? "Start streaming any film, web series, or live TV channel on ARMSS OTT and your playback progress will automatically appear here."
+              ? "Start streaming any film, web series, or live TV channel on AURA and your playback progress will automatically appear here."
               : `No titles found matching "${search || filter}". Try selecting a different filter.`}
           </p>
           <div className="mt-6 flex justify-center">

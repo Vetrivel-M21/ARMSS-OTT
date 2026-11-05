@@ -55,7 +55,7 @@ function BrowsePage() {
             {heading}
           </h1>
           <p className="mt-2 text-sm text-muted">
-            Browsing all titles in <span className="text-fg font-medium">{heading}</span> on ARMSS OTT.
+            Browsing all titles in <span className="text-fg font-medium">{heading}</span> on AURA.
           </p>
         </div>
         {items.length > 0 && (
@@ -68,7 +68,7 @@ function BrowsePage() {
       {items.length === 0 ? (
         <div className="mt-16 max-w-md rounded-2xl border border-white/10 bg-elevated/40 p-8 text-center mx-auto">
           <p className="text-base font-semibold text-fg">No titles in this collection yet</p>
-          <p className="mt-1 text-sm text-muted">Check back soon as new content is added daily to ARMSS OTT.</p>
+          <p className="mt-1 text-sm text-muted">Check back soon as new content is added daily to AURA.</p>
         </div>
       ) : (
         <div className="mt-8 grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 sm:gap-6">

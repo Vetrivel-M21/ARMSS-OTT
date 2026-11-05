@@ -138,7 +138,7 @@ export function AuthModal() {
       try {
         const res = await api.register(email.trim(), password, name.trim());
         setUser(res.user);
-        toast.success(`Account created! Welcome to ARMSS OTT, ${res.user.name}.`);
+        toast.success(`Account created! Welcome to AURA, ${res.user.name}.`);
         setOpen(false);
       } catch (err: any) {
         setError(err.message || "Registration failed. Please check your details.");
@@ -240,7 +240,7 @@ export function AuthModal() {
                 ? "Enter your registered email address or username to receive a 6-digit OTP."
                 : mode === "login"
                 ? "Sign in with your email or username to access your synchronized watchlist."
-                : "Join ARMSS OTT for the best Tamil films, web series, and live TV."}
+                : "Join AURA for the best Tamil films, web series, and live TV."}
             </Dialog.Description>
           </div>
 

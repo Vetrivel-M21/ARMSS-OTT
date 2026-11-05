@@ -174,7 +174,7 @@ function AdminPage() {
         <Shield className="size-6 text-accent" />
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.25em] text-accent">
-            ARMSS OTT
+            AURA
           </p>
           <h1 className="font-display italic text-3xl tracking-tight sm:text-4xl text-fg">
             Admin Dashboard
@@ -2455,7 +2455,7 @@ function ContentTab() {
               <Plus className="size-4 text-accent" />
               Add New Title to Catalog
             </h3>
-            <p className="text-xs text-muted mt-0.5">Fill in title details and streaming URLs to publish directly to ARMSS OTT</p>
+            <p className="text-xs text-muted mt-0.5">Fill in title details and streaming URLs to publish directly to AURA</p>
 
             <form onSubmit={handleCreateTitle} className="mt-5 space-y-4">
               <div className="space-y-3">

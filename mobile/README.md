@@ -1,6 +1,6 @@
-# ARMSS OTT — Mobile Native Application (Flutter)
+# AURA — Mobile Native Application (Flutter)
 
-A dedicated, native OTT mobile streaming application for iOS & Android built with Flutter 3.x, Riverpod, and GoRouter, reflecting the exact design aesthetics and backend APIs of ARMSS OTT.
+A dedicated, native OTT mobile streaming application for iOS & Android built with Flutter 3.x, Riverpod, and GoRouter, reflecting the exact design aesthetics and backend APIs of AURA.
 
 ---
 
@@ -49,7 +49,7 @@ A dedicated, native OTT mobile streaming application for iOS & Android built wit
 ## 🚀 How to Run Locally
 
 ### 1. Start the Go Backend
-In a terminal, start the ARMSS OTT backend:
+In a terminal, start the AURA backend:
 ```bash
 cd backend
 go run main.go
@@ -138,7 +138,7 @@ The release APK is cryptographically signed using the project's upload keystore 
 - **Keystore Path**: `android/app/upload-keystore.jks`
 - **Configuration File**: `android/key.properties`
 - **Key Alias**: `upload`
-- **Owner / DN**: `CN=ARMSS OTT, OU=Engineering, O=ARMSS Group, L=Chennai, ST=Tamil Nadu, C=IN`
+- **Owner / DN**: `CN=AURA, OU=Engineering, O=ARMSS Group, L=Chennai, ST=Tamil Nadu, C=IN`
 - **Certificate SHA-256**: `05:AD:8B:46:E1:7D:8E:3C:D3:DC:30:BD:D0:93:B8:2D:EB:6D:F0:A7:38:0B:C5:01:54:52:E4:5B:4A:1B:8A:F0`
 - **Certificate SHA-1**: `7C:39:45:8F:F4:C4:B5:86:8B:6D:92:93:20:DA:B7:3A:AB:4C:60:BE`
 

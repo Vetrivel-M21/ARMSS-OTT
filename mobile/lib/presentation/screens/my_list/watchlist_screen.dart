@@ -143,7 +143,7 @@ class _WatchlistScreenState extends ConsumerState<WatchlistScreen> with SingleTi
                 children: [
                   Text('Device Storage Used', style: AppTypography.cardTitle.copyWith(fontSize: 13)),
                   const SizedBox(height: 2),
-                  Text('$totalGbStr GB used by ARMSS OTT', style: AppTypography.bodySmall),
+                  Text('$totalGbStr GB used by AURA', style: AppTypography.bodySmall),
                 ],
               ),
             ],

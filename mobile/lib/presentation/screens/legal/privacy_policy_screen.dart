@@ -53,7 +53,7 @@ class PrivacyPolicyScreen extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('ARMSS OTT Privacy Guarantee', style: AppTypography.cardTitle.copyWith(fontSize: 15)),
+                      Text('AURA Privacy Guarantee', style: AppTypography.cardTitle.copyWith(fontSize: 15)),
                       const SizedBox(height: 2),
                       Text('Aura Pictures · Compliant with DPDP & RBI', style: AppTypography.bodySmall),
                     ],
@@ -112,7 +112,7 @@ class PrivacyPolicyScreen extends StatelessWidget {
             icon: Icons.info_outline_rounded,
             title: '1. Overview & Information We Collect',
             content:
-                'ARMSS OTT collects minimal personal data required to provide seamless video streaming: your name, email, chosen profiles (including Kids profile protection), and device diagnostic data to optimize adaptive bitrate streaming (720p, 1080p, and 4K UHD).',
+                'AURA collects minimal personal data required to provide seamless video streaming: your name, email, chosen profiles (including Kids profile protection), and device diagnostic data to optimize adaptive bitrate streaming (720p, 1080p, and 4K UHD).',
           ),
 
           // 2. Payments & Cashfree Security
@@ -120,7 +120,7 @@ class PrivacyPolicyScreen extends StatelessWidget {
             icon: Icons.payment_rounded,
             title: '2. Payment Security (Cashfree & Razorpay)',
             content:
-                'All subscription transactions are processed directly through Reserve Bank of India (RBI) authorized payment gateways (Cashfree Payments and Razorpay). ARMSS OTT never stores or receives your complete credit/debit card numbers, CVV, or banking credentials. All checkouts adhere strictly to PCI-DSS Level 1 compliance standards.',
+                'All subscription transactions are processed directly through Reserve Bank of India (RBI) authorized payment gateways (Cashfree Payments and Razorpay). AURA never stores or receives your complete credit/debit card numbers, CVV, or banking credentials. All checkouts adhere strictly to PCI-DSS Level 1 compliance standards.',
           ),
 
           // 3. Google Play Account Deletion
@@ -150,7 +150,7 @@ class PrivacyPolicyScreen extends StatelessWidget {
           const SizedBox(height: 30),
           Center(
             child: Text(
-              'ARMSS OTT · Aura Pictures © ${DateTime.now().year}\nAll rights reserved.',
+              'AURA · Aura Pictures © ${DateTime.now().year}\nAll rights reserved.',
               textAlign: TextAlign.center,
               style: AppTypography.bodySmall.copyWith(color: AppColors.textMuted),
             ),

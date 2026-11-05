@@ -134,7 +134,7 @@ export function DeleteAccountPage() {
           </div>
 
           <p className="mt-3 text-xs text-muted">
-            Official Account Deletion Portal for ARMSS OTT (Google Play Store Compliant)
+            Official Account Deletion Portal for AURA (Google Play Store Compliant)
           </p>
 
           {deletedSuccess ? (
@@ -144,7 +144,7 @@ export function DeleteAccountPage() {
               </div>
               <h2 className="text-xl font-semibold text-fg">Account Successfully Deleted</h2>
               <p className="text-sm text-muted">
-                Your ARMSS OTT account, profile records, watch history, and personal information have been permanently removed from our active servers.
+                Your AURA account, profile records, watch history, and personal information have been permanently removed from our active servers.
               </p>
               <div className="pt-2">
                 <Link

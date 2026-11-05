@@ -28,7 +28,7 @@ function ComingSoonPage() {
           Coming Soon
         </h1>
         <p className="mt-2.5 max-w-2xl text-sm leading-relaxed text-muted sm:text-base">
-          Upcoming blockbuster films and original series releasing on ARMSS OTT. Turn on reminders to receive alerts the moment each title premieres.
+          Upcoming blockbuster films and original series releasing on AURA. Turn on reminders to receive alerts the moment each title premieres.
         </p>
       </div>
 

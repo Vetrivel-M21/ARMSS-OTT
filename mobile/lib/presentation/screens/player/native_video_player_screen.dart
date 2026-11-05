@@ -11,6 +11,8 @@ import 'package:video_player/video_player.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:dio/dio.dart';
 
+import 'armss_player_controls.dart';
+
 import '../../../core/constants/api_constants.dart';
 import '../../../core/storage/storage_service.dart';
 import '../../../core/theme/app_colors.dart';
@@ -260,6 +262,7 @@ class _NativeVideoPlayerScreenState extends ConsumerState<NativeVideoPlayerScree
       videoController.addListener(_onControllerUpdate);
 
       // Create ChewieController for native controls & orientation management
+      final effectiveDur = _effectiveDuration;
       final chewieController = ChewieController(
         videoPlayerController: videoController,
         autoPlay: true,
@@ -267,6 +270,10 @@ class _NativeVideoPlayerScreenState extends ConsumerState<NativeVideoPlayerScree
         allowFullScreen: true,
         allowMuting: true,
         showControls: true,
+        customControls: ArmssPlayerControls(
+          fallbackDuration: effectiveDur,
+          onOpenOptions: _showQualitySheet,
+        ),
         deviceOrientationsOnEnterFullScreen: const [
           DeviceOrientation.landscapeLeft,
           DeviceOrientation.landscapeRight,
@@ -393,14 +400,39 @@ class _NativeVideoPlayerScreenState extends ConsumerState<NativeVideoPlayerScree
     });
   }
 
+  Duration get _effectiveDuration {
+    final streamDur = _videoPlayerController?.value.duration ?? Duration.zero;
+    if (streamDur > Duration.zero) return streamDur;
+
+    // 1. Episode runtime check
+    if (_currentEpisodeId != null) {
+      final title = ref.read(titleDetailProvider(widget.titleId)).value;
+      if (title != null && title.episodes.isNotEmpty) {
+        final ep = title.episodes.where((e) => e.id == _currentEpisodeId).firstOrNull;
+        if (ep != null && ep.runtime > 0) {
+          return Duration(minutes: ep.runtime);
+        }
+      }
+    }
+
+    // 2. Movie title runtime check
+    final title = ref.read(titleDetailProvider(widget.titleId)).value;
+    if (title != null && title.runtimeMin > 0) {
+      return Duration(minutes: title.runtimeMin);
+    }
+
+    return Duration.zero;
+  }
+
   void _startHeartbeatTimer() {
     _heartbeatTimer?.cancel();
     _heartbeatTimer = Timer.periodic(const Duration(seconds: 15), (_) {
       final vc = _videoPlayerController;
       if (vc != null && vc.value.isInitialized) {
         final posSec = vc.value.position.inSeconds.toDouble();
-        final durSec = vc.value.duration.inSeconds.toDouble();
-        final progressPct = durSec > 0 ? ((posSec / durSec) * 100).round() : 0;
+        final dur = _effectiveDuration;
+        final durSec = dur.inSeconds.toDouble();
+        final progressPct = durSec > 0 ? ((posSec / durSec) * 100).round().clamp(0, 100) : 0;
 
         playbackRepository.sendWatchProgress(
           videoId: widget.titleId,
@@ -1288,7 +1320,7 @@ class _NativeVideoPlayerScreenState extends ConsumerState<NativeVideoPlayerScree
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Text(
-                            title?.title ?? 'ARMSS OTT Player',
+                            title?.title ?? 'AURA Player',
                             style: AppTypography.cardTitle.copyWith(fontSize: 15),
                             overflow: TextOverflow.ellipsis,
                           ),
