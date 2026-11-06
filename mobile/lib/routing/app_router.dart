@@ -16,6 +16,8 @@ import '../presentation/screens/subscription/plans_screen.dart';
 import '../presentation/screens/details/title_details_screen.dart';
 import '../presentation/screens/player/native_video_player_screen.dart';
 import '../presentation/screens/legal/privacy_policy_screen.dart';
+import '../presentation/common/update_dialog.dart';
+import '../data/models/app_version_model.dart';
 
 final GlobalKey<NavigatorState> _rootNavigatorKey = GlobalKey<NavigatorState>();
 
@@ -146,6 +148,14 @@ final appRouter = GoRouter(
           episodeTitle: episodeTitle != null ? Uri.decodeComponent(episodeTitle) : null,
           directUrl: directUrl != null ? Uri.decodeComponent(directUrl) : null,
         );
+      },
+    ),
+    GoRoute(
+      parentNavigatorKey: _rootNavigatorKey,
+      path: '/update-required',
+      builder: (context, state) {
+        final version = state.extra as AppVersionModel;
+        return ForceUpdateScreen(version: version);
       },
     ),
   ],

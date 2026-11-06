@@ -12,6 +12,7 @@ import {
   CheckCircle2,
   Clock,
   Crown,
+  Download,
   ExternalLink,
   Eye,
   EyeOff,
@@ -29,6 +30,7 @@ import {
   Shield,
   ShieldOff,
   Sliders,
+  Smartphone,
   Sparkles,
   ThumbsDown,
   ThumbsUp,
@@ -62,6 +64,7 @@ import {
   type TopWatchedTitle,
   type UserAnalyticsItem,
   type UserDetailResponse,
+  type AppVersionConfig,
 } from "@/lib/api";
 import { useAether, DEFAULT_DISPLAY_SETTINGS, type SiteDisplaySettings } from "@/lib/store";
 import { TITLES, type Title } from "@/lib/catalog";
@@ -142,7 +145,7 @@ function UploadButton({
 
 export const Route = createFileRoute("/admin")({ component: AdminPage });
 
-type Tab = "analytics" | "users" | "content" | "layout" | "broadcast" | "plans";
+type Tab = "analytics" | "users" | "content" | "layout" | "broadcast" | "plans" | "updates";
 
 function AdminPage() {
   const user = useAether((s) => s.user);
@@ -194,6 +197,7 @@ function AdminPage() {
           { id: "layout", label: "Layout & Visibility", icon: LayoutTemplate },
           { id: "broadcast", label: "Broadcast", icon: Bell },
           { id: "plans", label: "Plans & Access", icon: Crown },
+          { id: "updates", label: "App Updates", icon: Smartphone },
         ] as { id: Tab; label: string; icon: React.ElementType }[]).map((t) => (
           <button
             key={t.id}
@@ -219,6 +223,7 @@ function AdminPage() {
         {tab === "layout" && <DisplayLayoutTab />}
         {tab === "broadcast" && <BroadcastTab />}
         {tab === "plans" && <PlansAccessTab />}
+        {tab === "updates" && <AppUpdatesTab />}
       </div>
     </div>
   );
@@ -4228,4 +4233,511 @@ function PlansAccessTab() {
     </div>
   );
 }
+
+/* ─── App Updates Tab (Google Play Store Version Control) ─────────────── */
+function AppUpdatesTab() {
+  const [config, setConfig] = useState<AppVersionConfig>({
+    latest_version: "1.0.0",
+    latest_build_number: 1,
+    min_version: "1.0.0",
+    min_build_number: 1,
+    force_update: false,
+    title: "AURA Mobile Update",
+    release_notes:
+      "• High-performance HLS streaming with CMAF fMP4\n• Google Play Store synchronized updates\n• Adaptive 4K and 1080p video player\n• Offline download and multi-profile support",
+    package_name: "com.armss.ott.armss_ott_mobile",
+    play_store_url: "https://play.google.com/store/apps/details?id=com.armss.ott.armss_ott_mobile",
+    android_apk_url: "",
+    ios_url: "https://apps.apple.com/app/aura-ott",
+    is_active: true,
+  });
+
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [previewMode, setPreviewMode] = useState<"flexible" | "force">("flexible");
+
+  useEffect(() => {
+    void (async () => {
+      setLoading(true);
+      const res = await api.admin.getAppVersion();
+      if (res) {
+        setConfig(res);
+        setPreviewMode(res.force_update ? "force" : "flexible");
+      }
+      setLoading(false);
+    })();
+  }, []);
+
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true);
+    const toastId = toast.loading("Saving update configuration...");
+    try {
+      const res = await api.admin.updateAppVersion(config);
+      if (res.success) {
+        toast.success(res.message || "App update settings published successfully!", { id: toastId });
+        if (res.config) setConfig(res.config);
+      } else {
+        toast.error(res.message || "Failed to update version settings.", { id: toastId });
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Network error while saving.", { id: toastId });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="space-y-8">
+      {/* Top Banner Stats */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="rounded-xl border border-border bg-surface p-4">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium text-muted uppercase tracking-wider">Play Store Target</span>
+            <Smartphone className="size-4 text-accent" />
+          </div>
+          <p className="mt-2 text-2xl font-bold text-fg">
+            v{config.latest_version}{" "}
+            <span className="text-xs font-normal text-muted">code {config.latest_build_number}</span>
+          </p>
+          <p className="mt-1 text-xs text-muted">Published Android build</p>
+        </div>
+
+        <div className="rounded-xl border border-border bg-surface p-4">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium text-muted uppercase tracking-wider">Minimum Required</span>
+            <Shield className="size-4 text-amber-400" />
+          </div>
+          <p className="mt-2 text-2xl font-bold text-fg">
+            v{config.min_version}{" "}
+            <span className="text-xs font-normal text-muted">code {config.min_build_number}</span>
+          </p>
+          <p className="mt-1 text-xs text-muted">Older builds will be blocked</p>
+        </div>
+
+        <div className="rounded-xl border border-border bg-surface p-4">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium text-muted uppercase tracking-wider">Update Policy</span>
+            <Zap className="size-4 text-emerald-400" />
+          </div>
+          <div className="mt-2 flex items-center gap-2">
+            <span
+              className={cn(
+                "px-2.5 py-0.5 rounded-full text-xs font-semibold",
+                config.force_update
+                  ? "bg-red-500/15 text-red-400 border border-red-500/30"
+                  : "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30"
+              )}
+            >
+              {config.force_update ? "Mandatory (Hard Gate)" : "Flexible (Dismissible)"}
+            </span>
+          </div>
+          <p className="mt-1 text-xs text-muted">
+            {config.force_update ? "Users must update before streaming" : "Users can choose to update later"}
+          </p>
+        </div>
+
+        <div className="rounded-xl border border-border bg-surface p-4">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium text-muted uppercase tracking-wider">System Status</span>
+            <Activity className="size-4 text-accent" />
+          </div>
+          <div className="mt-2 flex items-center gap-2">
+            <span
+              className={cn(
+                "size-2 rounded-full",
+                config.is_active ? "bg-emerald-500 animate-pulse" : "bg-neutral-500"
+              )}
+            />
+            <span className="text-sm font-bold text-fg">
+              {config.is_active ? "Actively Enforced" : "Inactive / Bypassed"}
+            </span>
+          </div>
+          <p className="mt-1 text-xs text-muted">Mobile boot version verification</p>
+        </div>
+      </div>
+
+      {/* Main Grid: Form + Phone Simulator */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+        {/* Form Settings (7 cols) */}
+        <form onSubmit={handleSave} className="lg:col-span-7 space-y-6">
+          {/* Section 1: Target Versions */}
+          <div className="rounded-xl border border-border bg-surface p-6 space-y-4">
+            <h3 className="text-base font-semibold text-fg flex items-center gap-2">
+              <Smartphone className="size-4 text-accent" />
+              1. Release Version Targets
+            </h3>
+            <p className="text-xs text-muted">
+              Configure the published version and build code matching your Google Play Console release.
+            </p>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-medium text-muted mb-1">
+                  Latest Version Name <span className="text-red-400">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. 1.1.0"
+                  value={config.latest_version}
+                  onChange={(e) => setConfig({ ...config, latest_version: e.target.value })}
+                  className="w-full rounded-lg bg-surface-elevated border border-border px-3 py-2 text-sm text-fg focus:outline-none focus:border-accent"
+                />
+                <span className="text-[11px] text-muted">Semantic version displayed to users</span>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-muted mb-1">
+                  Latest Version Code (Build) <span className="text-red-400">*</span>
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  required
+                  placeholder="e.g. 2"
+                  value={config.latest_build_number}
+                  onChange={(e) => setConfig({ ...config, latest_build_number: parseInt(e.target.value) || 1 })}
+                  className="w-full rounded-lg bg-surface-elevated border border-border px-3 py-2 text-sm text-fg focus:outline-none focus:border-accent"
+                />
+                <span className="text-[11px] text-muted">Integer matching versionCode in Gradle</span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-border/50">
+              <div>
+                <label className="block text-xs font-medium text-muted mb-1">
+                  Minimum Supported Version Name
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. 1.0.0"
+                  value={config.min_version}
+                  onChange={(e) => setConfig({ ...config, min_version: e.target.value })}
+                  className="w-full rounded-lg bg-surface-elevated border border-border px-3 py-2 text-sm text-fg focus:outline-none focus:border-accent"
+                />
+                <span className="text-[11px] text-muted">Lowest version still allowed to connect</span>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-muted mb-1">
+                  Minimum Supported Build Code
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  placeholder="e.g. 1"
+                  value={config.min_build_number}
+                  onChange={(e) => setConfig({ ...config, min_build_number: parseInt(e.target.value) || 1 })}
+                  className="w-full rounded-lg bg-surface-elevated border border-border px-3 py-2 text-sm text-fg focus:outline-none focus:border-accent"
+                />
+                <span className="text-[11px] text-muted">Builds below this code receive Force Update</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Section 2: Store Links & Package ID */}
+          <div className="rounded-xl border border-border bg-surface p-6 space-y-4">
+            <h3 className="text-base font-semibold text-fg flex items-center gap-2">
+              <Download className="size-4 text-accent" />
+              2. Google Play Store & Package Configuration
+            </h3>
+
+            <div>
+              <label className="block text-xs font-medium text-muted mb-1">
+                Android Application ID (Package Name) <span className="text-red-400">*</span>
+              </label>
+              <input
+                type="text"
+                required
+                value={config.package_name}
+                onChange={(e) => {
+                  const pkg = e.target.value;
+                  setConfig({
+                    ...config,
+                    package_name: pkg,
+                    play_store_url: `https://play.google.com/store/apps/details?id=${pkg}`,
+                  });
+                }}
+                className="w-full rounded-lg bg-surface-elevated border border-border px-3 py-2 text-sm text-fg font-mono focus:outline-none focus:border-accent"
+              />
+              <span className="text-[11px] text-muted">
+                Powers deep-linking via <code>market://details?id={config.package_name}</code>
+              </span>
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-muted mb-1">Google Play Store Web URL</label>
+              <input
+                type="url"
+                value={config.play_store_url}
+                onChange={(e) => setConfig({ ...config, play_store_url: e.target.value })}
+                className="w-full rounded-lg bg-surface-elevated border border-border px-3 py-2 text-sm text-fg font-mono focus:outline-none focus:border-accent"
+              />
+              <span className="text-[11px] text-muted">Fallback store web URL for devices without Play Services</span>
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-muted mb-1">
+                Direct APK URL <span className="text-muted">(Optional Sideload / Beta Link)</span>
+              </label>
+              <input
+                type="text"
+                placeholder="https://aurapictures.online/downloads/armss-ott.apk"
+                value={config.android_apk_url}
+                onChange={(e) => setConfig({ ...config, android_apk_url: e.target.value })}
+                className="w-full rounded-lg bg-surface-elevated border border-border px-3 py-2 text-sm text-fg font-mono focus:outline-none focus:border-accent"
+              />
+              <span className="text-[11px] text-muted">Used for staging, internal testers, or Android TV sideloading</span>
+            </div>
+          </div>
+
+          {/* Section 3: Update Policy & Release Notes */}
+          <div className="rounded-xl border border-border bg-surface p-6 space-y-4">
+            <h3 className="text-base font-semibold text-fg flex items-center gap-2">
+              <Sparkles className="size-4 text-accent" />
+              3. Update Policy & Release Notes
+            </h3>
+
+            {/* Force update toggle */}
+            <div className="flex items-center justify-between p-3.5 rounded-lg bg-surface-elevated border border-border">
+              <div>
+                <p className="text-sm font-medium text-fg">Force Mandatory Update</p>
+                <p className="text-xs text-muted">
+                  When enabled, all users below the latest version are blocked with an unskippable update screen.
+                </p>
+              </div>
+              <input
+                type="checkbox"
+                checked={config.force_update}
+                onChange={(e) => {
+                  const val = e.target.checked;
+                  setConfig({ ...config, force_update: val });
+                  setPreviewMode(val ? "force" : "flexible");
+                }}
+                className="size-5 rounded border-border accent-accent cursor-pointer"
+              />
+            </div>
+
+            {/* Active toggle */}
+            <div className="flex items-center justify-between p-3.5 rounded-lg bg-surface-elevated border border-border">
+              <div>
+                <p className="text-sm font-medium text-fg">Enable Version Check Enforcement</p>
+                <p className="text-xs text-muted">
+                  Enable or disable update prompts during app startup and in settings.
+                </p>
+              </div>
+              <input
+                type="checkbox"
+                checked={config.is_active}
+                onChange={(e) => setConfig({ ...config, is_active: e.target.checked })}
+                className="size-5 rounded border-border accent-accent cursor-pointer"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-muted mb-1">
+                Prompt Title <span className="text-red-400">*</span>
+              </label>
+              <input
+                type="text"
+                required
+                value={config.title}
+                onChange={(e) => setConfig({ ...config, title: e.target.value })}
+                className="w-full rounded-lg bg-surface-elevated border border-border px-3 py-2 text-sm text-fg focus:outline-none focus:border-accent"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-muted mb-1">
+                Release Notes / Changelog <span className="text-red-400">*</span>
+              </label>
+              <textarea
+                rows={5}
+                required
+                value={config.release_notes}
+                onChange={(e) => setConfig({ ...config, release_notes: e.target.value })}
+                className="w-full rounded-lg bg-surface-elevated border border-border px-3 py-2 text-sm text-fg font-mono focus:outline-none focus:border-accent"
+              />
+              <span className="text-[11px] text-muted">
+                Markdown or bulleted notes displayed inside the mobile update prompt
+              </span>
+            </div>
+          </div>
+
+          {/* Submit Button */}
+          <div className="flex items-center gap-3">
+            <Button type="submit" disabled={saving} className="px-6 py-2.5 text-sm font-semibold">
+              {saving ? <RefreshCw className="size-4 animate-spin mr-2" /> : <CheckCircle2 className="size-4 mr-2" />}
+              Publish Update Settings to Production
+            </Button>
+          </div>
+        </form>
+
+        {/* Live Mobile Phone Simulator (5 cols) */}
+        <div className="lg:col-span-5 sticky top-28 space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-fg flex items-center gap-2">
+              <Eye className="size-4 text-accent" />
+              Live Mobile UX Preview
+            </h3>
+            <div className="flex gap-1 bg-surface-elevated p-1 rounded-lg border border-border">
+              <button
+                type="button"
+                onClick={() => setPreviewMode("flexible")}
+                className={cn(
+                  "px-2.5 py-1 text-xs rounded font-medium transition-all",
+                  previewMode === "flexible" ? "bg-accent text-accent-fg font-semibold" : "text-muted hover:text-fg"
+                )}
+              >
+                Flexible Sheet
+              </button>
+              <button
+                type="button"
+                onClick={() => setPreviewMode("force")}
+                className={cn(
+                  "px-2.5 py-1 text-xs rounded font-medium transition-all",
+                  previewMode === "force" ? "bg-red-500 text-white font-semibold" : "text-muted hover:text-fg"
+                )}
+              >
+                Force Screen
+              </button>
+            </div>
+          </div>
+
+          {/* Smartphone Frame */}
+          <div className="relative mx-auto w-full max-w-[340px] aspect-[9/18.5] rounded-[36px] bg-[#0E0F14] border-[6px] border-neutral-800 shadow-2xl overflow-hidden flex flex-col justify-between">
+            {/* Phone Notch & Speaker */}
+            <div className="pt-2 px-6 flex justify-between items-center text-[11px] text-neutral-400 select-none z-10">
+              <span>9:41</span>
+              <div className="w-20 h-4 bg-neutral-900 rounded-full" />
+              <span>5G 84%</span>
+            </div>
+
+            {/* Phone Screen Mock Content (AURA Background Mock) */}
+            <div className="flex-1 flex flex-col relative px-4 pt-4 overflow-hidden">
+              <div className="flex items-center justify-between mb-4 opacity-40">
+                <span className="text-xs font-black tracking-widest text-red-500">AURA</span>
+                <div className="size-5 rounded-full bg-neutral-800" />
+              </div>
+
+              {/* Blurred background teaser */}
+              <div className="space-y-3 opacity-25">
+                <div className="w-full h-32 rounded-xl bg-gradient-to-tr from-neutral-900 to-neutral-800" />
+                <div className="h-4 w-3/4 rounded bg-neutral-800" />
+                <div className="h-3 w-1/2 rounded bg-neutral-800" />
+              </div>
+
+              {/* OVERLAY: Flexible Bottom Sheet Mode */}
+              {previewMode === "flexible" && (
+                <div className="absolute inset-0 bg-black/60 backdrop-blur-sm flex flex-col justify-end">
+                  <div className="bg-[#1A1C24] border-t border-white/10 rounded-t-3xl p-5 space-y-3.5 animate-in slide-in-from-bottom duration-300">
+                    <div className="w-10 h-1 bg-white/20 rounded-full mx-auto mb-1" />
+
+                    <div className="flex items-center gap-3">
+                      <div className="size-11 rounded-xl bg-gradient-to-tr from-red-600 to-red-400 flex items-center justify-center shadow-lg shadow-red-500/30 shrink-0">
+                        <Smartphone className="size-6 text-white" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-bold text-white leading-tight">
+                          {config.title || "Update Available"}
+                        </p>
+                        <p className="text-[11px] text-emerald-400 font-medium">
+                          v{config.latest_version} · Google Play Store
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="bg-black/40 rounded-xl p-3 border border-white/5 max-h-36 overflow-y-auto">
+                      <p className="text-[10px] uppercase font-bold text-neutral-400 tracking-wider mb-1">
+                        What's New:
+                      </p>
+                      <pre className="text-[11px] text-neutral-300 font-sans whitespace-pre-wrap leading-relaxed">
+                        {config.release_notes}
+                      </pre>
+                    </div>
+
+                    <div className="space-y-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => toast.success("Redirecting to market://details?id=" + config.package_name)}
+                        className="w-full py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold text-xs shadow-lg shadow-red-600/30 flex items-center justify-center gap-2 active:scale-95 transition-all"
+                      >
+                        <Download className="size-3.5" />
+                        Update on Play Store
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => toast.info("Dismissed flexible update prompt")}
+                        className="w-full py-2 text-center text-xs text-neutral-400 hover:text-white"
+                      >
+                        Later / Remind Me Next Time
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* OVERLAY: Force Mandatory Fullscreen Mode */}
+              {previewMode === "force" && (
+                <div className="absolute inset-0 bg-[#0E0F14] flex flex-col items-center justify-between p-6 z-20 text-center animate-in fade-in duration-300">
+                  <div className="w-full flex justify-center pt-6">
+                    <div className="size-16 rounded-2xl bg-gradient-to-tr from-red-600 to-red-500 flex items-center justify-center shadow-2xl shadow-red-600/50">
+                      <Shield className="size-8 text-white" />
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-red-500/15 text-red-400 border border-red-500/30">
+                      MANDATORY UPDATE REQUIRED
+                    </span>
+                    <h4 className="text-base font-bold text-white">{config.title || "Important Update Required"}</h4>
+                    <p className="text-xs text-neutral-400 leading-relaxed">
+                      To continue streaming 4K content securely, update to{" "}
+                      <strong className="text-white">v{config.latest_version}</strong> from Google Play Store.
+                    </p>
+
+                    <div className="bg-neutral-900/80 rounded-xl p-3 border border-neutral-800 text-left max-h-28 overflow-y-auto">
+                      <p className="text-[10px] font-bold text-neutral-400 mb-1">Highlights:</p>
+                      <pre className="text-[11px] text-neutral-300 font-sans whitespace-pre-wrap leading-relaxed">
+                        {config.release_notes}
+                      </pre>
+                    </div>
+                  </div>
+
+                  <div className="w-full space-y-2">
+                    <button
+                      type="button"
+                      onClick={() => toast.success("Redirecting to market://details?id=" + config.package_name)}
+                      className="w-full py-3 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold text-xs shadow-xl shadow-red-600/40 flex items-center justify-center gap-2 active:scale-95 transition-all"
+                    >
+                      <Download className="size-4" />
+                      Update Now on Google Play
+                    </button>
+                    <p className="text-[10px] text-neutral-500">
+                      Your current version (v{config.min_version}) is no longer supported.
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Home Indicator bar */}
+            <div className="pb-2 flex justify-center">
+              <div className="w-28 h-1 bg-white/20 rounded-full" />
+            </div>
+          </div>
+
+          <div className="rounded-lg bg-surface border border-border p-3 text-xs text-muted flex items-start gap-2">
+            <Sparkles className="size-4 text-amber-400 shrink-0 mt-0.5" />
+            <span>
+              The simulator updates dynamically as you type release notes and change version codes above.
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 

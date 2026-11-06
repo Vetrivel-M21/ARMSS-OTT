@@ -7,12 +7,28 @@ import '../../../core/theme/app_typography.dart';
 
 /// Custom, resilient video player controls for ARMSS-OTT.
 ///
-/// Fixes the critical bug where long movies (e.g. 2 hours) reporting
-/// `Duration.zero` or asynchronous HLS durations caused Chewie's default
-/// controls to display `00:00 / 00:00` and stretch the progress bar 100% full-width
-/// due to division by zero (`position / 0 = infinity`).
+/// Fixes two critical bugs in long-form HLS video playback:
 ///
-/// Features:
+/// **Bug 1 – 0:00/0:00 display on long movies:**
+/// HLS streams served from the backend report `Duration.zero` during and
+/// shortly after `initialize()` because ExoPlayer / AVPlayer must fully parse
+/// the master manifest and at least one media playlist before the duration is
+/// known. Short (~2 min) clips resolve fast enough that the UI never notices;
+/// films (1–3 h) take longer, so the initial `duration` is still zero when
+/// controls first render. The fix: a periodic `_durationPollTimer` re-checks
+/// `videoController.value.duration` every 500 ms for up to 15 s, stopping as
+/// soon as a valid (> 0 and < sanity cap) duration is reported.
+///
+/// **Bug 2 – Progress bar immediately 100% full/red:**
+/// ExoPlayer (and sometimes AVPlayer via video_player) temporarily emits
+/// `duration = 2^31−1 ms` (≈ 24.8 days) for live or not-yet-known HLS
+/// streams. This makes `position / duration ≈ 0`, which is fine, BUT the
+/// raw value passes our `> 0` guard and is forwarded to `_effectiveDuration`,
+/// giving a false 24-day total. The fix: cap the accepted stream duration at
+/// a sane ceiling (10 hours) so such sentinel values are ignored and the
+/// fallback chain is engaged instead.
+///
+/// Features (unchanged from original):
 /// - Resilient duration fallback from metadata (title `runtimeMin` / episode `runtime`).
 /// - Clamped seekbar: drag or tap seeking across the entire movie duration.
 /// - 10s Rewind / 10s Forward / Play / Pause with auto-hide timer.
@@ -42,6 +58,15 @@ class _ArmssPlayerControlsState extends State<ArmssPlayerControls> {
   bool _isDragging = false;
   double _dragProgress = 0.0; // 0.0 to 1.0
 
+  /// Polling timer that keeps checking for a valid HLS duration.
+  /// Needed because ExoPlayer / AVPlayer may not know the duration at
+  /// initialize() time for multi-rendition HLS master playlists.
+  Timer? _durationPollTimer;
+
+  /// Maximum sane video duration. ExoPlayer emits 2^31-1 ms as a sentinel for
+  /// "live / unknown" streams. We cap at 10 h to detect and discard that.
+  static const Duration _maxSaneDuration = Duration(hours: 10);
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
@@ -51,15 +76,22 @@ class _ArmssPlayerControlsState extends State<ArmssPlayerControls> {
 
     if (oldChewie?.videoPlayerController != newVideo) {
       _videoController?.removeListener(_onControllerTick);
+      _durationPollTimer?.cancel();
+
       _videoController = newVideo;
       _videoController?.addListener(_onControllerTick);
       _resetHideTimer();
+
+      // Start duration polling so the UI updates as soon as HLS duration
+      // becomes available (may take a few seconds for long movies).
+      _startDurationPolling();
     }
   }
 
   @override
   void dispose() {
     _hideTimer?.cancel();
+    _durationPollTimer?.cancel();
     _videoController?.removeListener(_onControllerTick);
     super.dispose();
   }
@@ -69,9 +101,43 @@ class _ArmssPlayerControlsState extends State<ArmssPlayerControls> {
     setState(() {});
   }
 
+  /// Polls `videoController.value.duration` every 500 ms until we get a valid,
+  /// sane value OR 15 seconds have elapsed (30 polls × 500 ms).
+  void _startDurationPolling() {
+    _durationPollTimer?.cancel();
+    int pollsLeft = 30; // 15 seconds total
+
+    _durationPollTimer = Timer.periodic(const Duration(milliseconds: 500), (t) {
+      if (!mounted) {
+        t.cancel();
+        return;
+      }
+      pollsLeft--;
+      final raw = _videoController?.value.duration ?? Duration.zero;
+      final isValid = raw > Duration.zero && raw <= _maxSaneDuration;
+      if (isValid || pollsLeft <= 0) {
+        t.cancel();
+        // Trigger a rebuild so the controls now show the real duration.
+        if (mounted) setState(() {});
+      }
+    });
+  }
+
+  /// Returns the best-effort total duration for the current stream.
+  ///
+  /// Priority:
+  ///   1. Stream-reported duration (from `video_player`) — only if sane.
+  ///   2. Caller-supplied `durationResolver` (from metadata / backend ticket).
+  ///   3. Static `fallbackDuration` passed at construction.
+  ///   4. Hardcoded 45-minute default (safest non-zero value).
   Duration get _effectiveDuration {
     final streamDur = _videoController?.value.duration ?? Duration.zero;
-    if (streamDur > Duration.zero) return streamDur;
+    // Accept stream duration only if positive AND within a sane ceiling.
+    // ExoPlayer may emit 2^31-1 ms for unresolved HLS durations.
+    if (streamDur > Duration.zero && streamDur <= _maxSaneDuration) {
+      return streamDur;
+    }
+
     if (widget.durationResolver != null) {
       final resolved = widget.durationResolver!();
       if (resolved > Duration.zero) return resolved;
@@ -172,7 +238,8 @@ class _ArmssPlayerControlsState extends State<ArmssPlayerControls> {
     final hasHours = totalDur.inHours > 0;
     final isBuffering = vc.value.isBuffering;
 
-    // Calculate progress ratio (0.0 to 1.0)
+    // Calculate progress ratio (0.0 to 1.0).
+    // Guard: totalDur must be > 0 (guaranteed by _effectiveDuration fallback).
     final double rawProgress = (totalDur.inMilliseconds > 0)
         ? (currentPos.inMilliseconds / totalDur.inMilliseconds).clamp(0.0, 1.0)
         : 0.0;
@@ -516,4 +583,3 @@ class _ArmssPlayerControlsState extends State<ArmssPlayerControls> {
     );
   }
 }
-

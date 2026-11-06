@@ -203,6 +203,28 @@ export type SiteDisplaySettings = {
   homeLayout: HomeLayoutSettings;
 };
 
+export type AppVersionConfig = {
+  latest_version: string;
+  latest_build_number: number;
+  min_version: string;
+  min_build_number: number;
+  force_update: boolean;
+  title: string;
+  release_notes: string;
+  package_name: string;
+  play_store_url: string;
+  android_apk_url: string;
+  ios_url: string;
+  is_active: boolean;
+  updated_at?: string;
+};
+
+export type AppVersionCheckResponse = AppVersionConfig & {
+  update_available: boolean;
+  update_required: boolean;
+  market_uri: string;
+};
+
 function getApiBase(): string {
   // In the browser, always use relative "/api" so requests go to the same origin
   // and are proxied by Vite in dev (or nginx in prod), preventing CORS or host mismatches.
@@ -642,6 +664,18 @@ export const api = {
     }
   },
 
+  // Mobile App Version & Play Store Update Status (Public GET)
+  async getAppVersion(build?: number): Promise<AppVersionCheckResponse | null> {
+    try {
+      const q = typeof build === "number" ? `?build=${build}` : "";
+      const res = await fetch(`${API_BASE()}/app/version${q}`);
+      if (!res.ok) return null;
+      return await res.json();
+    } catch {
+      return null;
+    }
+  },
+
   // Public Title & Episodes (GET)
   async getTitle(id: string): Promise<any | null> {
     try {
@@ -974,6 +1008,35 @@ export const api = {
         return res.ok;
       } catch {
         return false;
+      }
+    },
+
+    async getAppVersion(): Promise<AppVersionConfig | null> {
+      try {
+        const res = await fetchWithAuth("/admin/app/version");
+        if (!res.ok) return null;
+        const data = await res.json();
+        return (data.config as AppVersionConfig) || null;
+      } catch {
+        return null;
+      }
+    },
+
+    async updateAppVersion(config: AppVersionConfig): Promise<{ success: boolean; message: string; config?: AppVersionConfig }> {
+      try {
+        const res = await fetchWithAuth("/admin/app/version", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(config),
+        });
+        const data = await res.json();
+        return {
+          success: res.ok && data.success !== false,
+          message: data.message || (res.ok ? "App version saved successfully" : "Failed to update version"),
+          config: data.config,
+        };
+      } catch (err: any) {
+        return { success: false, message: err?.message || "Network error" };
       }
     },
   },

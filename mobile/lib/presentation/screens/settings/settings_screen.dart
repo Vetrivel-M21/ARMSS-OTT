@@ -7,6 +7,8 @@ import '../../../core/theme/app_typography.dart';
 import '../../../core/storage/storage_service.dart';
 import '../../../core/constants/api_constants.dart';
 import '../../../data/repositories/profile_repository.dart';
+import '../../../data/repositories/version_repository.dart';
+import '../../common/update_dialog.dart';
 import '../../../providers/auth_provider.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
@@ -164,8 +166,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           _buildSettingsTile(
             icon: Icons.info_outline_rounded,
             title: 'About AURA',
-            subtitle: 'v1.0.0 (Native Mobile Edition)',
+            subtitle: 'v${VersionRepository.currentAppVersion} (Native Mobile Edition)',
             onTap: () {},
+          ),
+          _buildSettingsTile(
+            icon: Icons.system_update_rounded,
+            title: 'Check for Updates',
+            subtitle: 'Current: v${VersionRepository.currentAppVersion} · Tap to check Google Play',
+            onTap: () => _checkUpdateManual(context),
           ),
           const SizedBox(height: 20),
 
@@ -226,6 +234,37 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         trailing: const Icon(Icons.arrow_forward_ios_rounded, color: AppColors.textMuted, size: 14),
       ),
     );
+  }
+
+  Future<void> _checkUpdateManual(BuildContext context) async {
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
+    scaffoldMessenger.showSnackBar(
+      const SnackBar(
+        content: Text('Checking for updates on Google Play Store...'),
+        duration: Duration(seconds: 1),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+
+    final versionInfo = await versionRepository.checkAppVersion();
+    if (!context.mounted) return;
+
+    if (versionInfo != null && versionInfo.updateRequired) {
+      context.go('/update-required', extra: versionInfo);
+      return;
+    }
+
+    if (versionInfo != null && versionInfo.updateAvailable) {
+      AppUpdateDialog.showFlexible(context, versionInfo);
+    } else {
+      scaffoldMessenger.showSnackBar(
+        SnackBar(
+          content: Text('AURA is up to date (v${VersionRepository.currentAppVersion})!'),
+          duration: const Duration(seconds: 2),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
   }
 
   void _showDeleteAccountConfirmation(BuildContext context) {

@@ -5,6 +5,8 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_typography.dart';
 import '../../core/storage/storage_service.dart';
 import '../../providers/auth_provider.dart';
+import '../../data/repositories/version_repository.dart';
+import '../../data/models/app_version_model.dart';
 
 class SplashScreen extends ConsumerStatefulWidget {
   const SplashScreen({super.key});
@@ -37,6 +39,17 @@ class _SplashScreenState extends ConsumerState<SplashScreen> with SingleTickerPr
     _controller.forward().then((_) async {
       await Future.delayed(const Duration(milliseconds: 500));
       if (!mounted) return;
+
+      // 1. Version check: enforce mandatory Play Store updates
+      final versionInfo = await versionRepository.checkAppVersion();
+      if (!mounted) return;
+
+      if (versionInfo != null && versionInfo.updateRequired) {
+        context.go('/update-required', extra: versionInfo);
+        return;
+      }
+
+      // 2. Normal auth session verification
       final token = await storageService.getToken();
       if (token != null && token.isNotEmpty) {
         final user = await ref.read(authProvider.notifier).checkStatus();

@@ -227,6 +227,8 @@ func main() {
 			r.Post("/admin/upload", handlers.AdminUpload)
 			r.Put("/admin/settings/layout", handlers.AdminUpdateLayoutSettings)
 			r.Delete("/admin/settings/layout", handlers.AdminResetLayoutSettings)
+			r.Get("/admin/app/version", handlers.AdminGetAppVersion)
+			r.Put("/admin/app/version", handlers.AdminUpdateAppVersion)
 
 			// Plan-based Access Control Management
 			r.Get("/admin/plans", handlers.AdminListPlans)
@@ -262,6 +264,9 @@ func main() {
 
 		// Public Layout Settings
 		r.Get("/settings/layout", handlers.GetLayoutSettings)
+
+		// Public Mobile App Version Check
+		r.Get("/app/version", handlers.GetAppVersion)
 	})
 
 	// Ingest Pipeline root routes (for direct POST /admin/videos calls)

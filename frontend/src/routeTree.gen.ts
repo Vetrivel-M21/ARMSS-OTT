@@ -20,6 +20,7 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as MyListRouteImport } from './routes/my-list'
 import { Route as PlansRouteImport } from './routes/plans'
 import { Route as PrivacyRouteImport } from './routes/privacy'
+import { Route as PrivacyPolicyRouteImport } from './routes/privacy-policy'
 import { Route as SearchRouteImport } from './routes/search'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as TermsRouteImport } from './routes/terms'
@@ -82,6 +83,11 @@ const PrivacyRoute = PrivacyRouteImport.update({
   path: '/privacy',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PrivacyPolicyRoute = PrivacyPolicyRouteImport.update({
+  id: '/privacy-policy',
+  path: '/privacy-policy',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SearchRoute = SearchRouteImport.update({
   id: '/search',
   path: '/search',
@@ -125,6 +131,7 @@ export interface FileRoutesByFullPath {
   '/my-list': typeof MyListRoute
   '/plans': typeof PlansRoute
   '/privacy': typeof PrivacyRoute
+  '/privacy-policy': typeof PrivacyPolicyRoute
   '/search': typeof SearchRoute
   '/settings': typeof SettingsRoute
   '/terms': typeof TermsRoute
@@ -144,6 +151,7 @@ export interface FileRoutesByTo {
   '/my-list': typeof MyListRoute
   '/plans': typeof PlansRoute
   '/privacy': typeof PrivacyRoute
+  '/privacy-policy': typeof PrivacyPolicyRoute
   '/search': typeof SearchRoute
   '/settings': typeof SettingsRoute
   '/terms': typeof TermsRoute
@@ -164,6 +172,7 @@ export interface FileRoutesById {
   '/my-list': typeof MyListRoute
   '/plans': typeof PlansRoute
   '/privacy': typeof PrivacyRoute
+  '/privacy-policy': typeof PrivacyPolicyRoute
   '/search': typeof SearchRoute
   '/settings': typeof SettingsRoute
   '/terms': typeof TermsRoute
@@ -185,6 +194,7 @@ export interface FileRouteTypes {
     | '/my-list'
     | '/plans'
     | '/privacy'
+    | '/privacy-policy'
     | '/search'
     | '/settings'
     | '/terms'
@@ -204,6 +214,7 @@ export interface FileRouteTypes {
     | '/my-list'
     | '/plans'
     | '/privacy'
+    | '/privacy-policy'
     | '/search'
     | '/settings'
     | '/terms'
@@ -223,6 +234,7 @@ export interface FileRouteTypes {
     | '/my-list'
     | '/plans'
     | '/privacy'
+    | '/privacy-policy'
     | '/search'
     | '/settings'
     | '/terms'
@@ -243,6 +255,7 @@ export interface RootRouteChildren {
   MyListRoute: typeof MyListRoute
   PlansRoute: typeof PlansRoute
   PrivacyRoute: typeof PrivacyRoute
+  PrivacyPolicyRoute: typeof PrivacyPolicyRoute
   SearchRoute: typeof SearchRoute
   SettingsRoute: typeof SettingsRoute
   TermsRoute: typeof TermsRoute
@@ -330,6 +343,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PrivacyRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/privacy-policy': {
+      id: '/privacy-policy'
+      path: '/privacy-policy'
+      fullPath: '/privacy-policy'
+      preLoaderRoute: typeof PrivacyPolicyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/search': {
       id: '/search'
       path: '/search'
@@ -387,6 +407,7 @@ const rootRouteChildren: RootRouteChildren = {
   MyListRoute: MyListRoute,
   PlansRoute: PlansRoute,
   PrivacyRoute: PrivacyRoute,
+  PrivacyPolicyRoute: PrivacyPolicyRoute,
   SearchRoute: SearchRoute,
   SettingsRoute: SettingsRoute,
   TermsRoute: TermsRoute,
