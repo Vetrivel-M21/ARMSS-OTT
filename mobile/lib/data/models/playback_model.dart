@@ -6,6 +6,10 @@ class PlaybackTicket {
   final int maxHeight;
   final double resumePositionSec;
   final String? token;
+  /// Authoritative video duration from the backend DB (seconds).
+  /// Non-zero when the transcoder has set videos.duration.
+  /// Used as the primary fallback duration before HLS manifest resolves.
+  final double durationSeconds;
 
   PlaybackTicket({
     required this.videoId,
@@ -13,6 +17,7 @@ class PlaybackTicket {
     required this.maxHeight,
     required this.resumePositionSec,
     this.token,
+    this.durationSeconds = 0.0,
   });
 
   factory PlaybackTicket.fromJson(String videoId, Map<String, dynamic> json) {
@@ -23,12 +28,19 @@ class PlaybackTicket {
       extractedToken = parsed.queryParameters['token'];
     } catch (_) {}
 
+    final rawDurationSec = (json['durationSeconds'] as num?)?.toDouble() ?? 0.0;
+    // Reject sentinel values: must be positive and < 24 hours
+    final sanitizedDurationSec =
+        (rawDurationSec > 0 && rawDurationSec < 86400) ? rawDurationSec : 0.0;
+
     return PlaybackTicket(
       videoId: videoId,
       manifestUrl: manifest,
       maxHeight: (json['maxHeight'] as num?)?.toInt() ?? 1080,
-      resumePositionSec: (json['resumePositionSec'] as num?)?.toDouble() ?? 0.0,
+      resumePositionSec:
+          (json['resumePositionSec'] as num?)?.toDouble() ?? 0.0,
       token: extractedToken,
+      durationSeconds: sanitizedDurationSec,
     );
   }
 

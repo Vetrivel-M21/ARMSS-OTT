@@ -102,10 +102,12 @@ class _ArmssPlayerControlsState extends State<ArmssPlayerControls> {
   }
 
   /// Polls `videoController.value.duration` every 500 ms until we get a valid,
-  /// sane value OR 15 seconds have elapsed (30 polls × 500 ms).
+  /// sane value OR 45 seconds have elapsed (90 polls × 500 ms).
+  /// Extended from 15s: 4K multi-rendition HLS manifests on some Android devices
+  /// take longer than 15s to fully parse and report a valid duration.
   void _startDurationPolling() {
     _durationPollTimer?.cancel();
-    int pollsLeft = 30; // 15 seconds total
+    int pollsLeft = 90; // 45 seconds total
 
     _durationPollTimer = Timer.periodic(const Duration(milliseconds: 500), (t) {
       if (!mounted) {
@@ -234,7 +236,11 @@ class _ArmssPlayerControlsState extends State<ArmssPlayerControls> {
     }
 
     final totalDur = _effectiveDuration;
-    final currentPos = vc.value.position;
+    final rawPos = vc.value.position;
+    // Sanitize position: ExoPlayer can momentarily emit a position larger than the
+    // total duration (e.g. after a seek on a fresh stream). Clamp it so rawProgress
+    // never exceeds 1.0 and the red bar never shows 100% on a just-opened video.
+    final currentPos = (rawPos > totalDur && totalDur > Duration.zero) ? totalDur : rawPos;
     final hasHours = totalDur.inHours > 0;
     final isBuffering = vc.value.isBuffering;
 

@@ -250,6 +250,33 @@ func GetPlaybackTicket(w http.ResponseWriter, r *http.Request) {
 		claims.UserID, videoID,
 	).Scan(&resumeSec)
 
+	// 6b. Authoritative video duration from DB (videos.duration column, populated by transcoder).
+	// Returned to client so the progress bar renders correctly before HLS manifest is parsed.
+	var durationSeconds float64
+	_ = database.DB.QueryRowContext(r.Context(),
+		"SELECT duration FROM videos WHERE id = ?",
+		videoID,
+	).Scan(&durationSeconds)
+	// Also try episodes table if videoID is an episode
+	if durationSeconds <= 0 {
+		_ = database.DB.QueryRowContext(r.Context(),
+			"SELECT runtime FROM episodes WHERE id = ?",
+			videoID,
+		).Scan(&durationSeconds)
+		// episodes.runtime is in minutes — convert to seconds
+		if durationSeconds > 0 {
+			durationSeconds *= 60
+		}
+	}
+	// Clamp: reject sentinel values and anything unreasonably large (>24h)
+	if durationSeconds <= 0 || durationSeconds > 86400 {
+		durationSeconds = 0
+	}
+	// Sanitize resumeSec: if saved progress is >= video duration, reset to avoid 100% bar on start
+	if durationSeconds > 0 && resumeSec >= durationSeconds {
+		resumeSec = 0
+	}
+
 	// 7. Generate Signed Playback Token (5 minutes lifetime)
 	playbackToken, err := playback.GeneratePlaybackToken(claims.UserID, videoID, deviceID, clientType, maxHeight, 5*time.Minute)
 	if err != nil {
@@ -285,6 +312,7 @@ func GetPlaybackTicket(w http.ResponseWriter, r *http.Request) {
 		ManifestURL:       manifestURL,
 		MaxHeight:         maxHeight,
 		ResumePositionSec: resumeSec,
+		DurationSeconds:   durationSeconds,
 	}
 
 	metrics.RecordPlaybackStart(clientType, maxHeight, string(userTier))

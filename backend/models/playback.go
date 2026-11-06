@@ -21,6 +21,10 @@ type PlaybackTicketResponse struct {
 	ManifestURL       string  `json:"manifestUrl"`
 	MaxHeight         int     `json:"maxHeight"`
 	ResumePositionSec float64 `json:"resumePositionSec"`
+	// DurationSeconds is the authoritative video duration from the DB (videos.duration column).
+	// Clients use this as the primary duration source so the progress bar is correct before
+	// ExoPlayer/AVPlayer finishes parsing the HLS manifest (which can take >15s for long films).
+	DurationSeconds float64 `json:"durationSeconds"`
 }
 
 // PlaybackTokenClaims represents the claims inside the short-lived signed playback token.

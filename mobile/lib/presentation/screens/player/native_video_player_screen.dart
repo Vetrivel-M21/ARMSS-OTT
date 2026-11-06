@@ -254,7 +254,12 @@ class _NativeVideoPlayerScreenState extends ConsumerState<NativeVideoPlayerScree
         return;
       }
 
-      if (startAt > Duration.zero && startAt < videoController.value.duration) {
+      // Seek to resume position only when it is valid.
+      // IMPORTANT: use _effectiveDuration (metadata/ticket fallback) NOT videoController.value.duration
+      // here — the stream duration is Duration.zero at this point for HLS because ExoPlayer has not
+      // yet parsed the full manifest. Using stream duration would always skip the seek.
+      final metaDur = _effectiveDuration;
+      if (startAt > Duration.zero && metaDur > Duration.zero && startAt < metaDur) {
         await videoController.seekTo(startAt);
       }
 
@@ -403,7 +408,20 @@ class _NativeVideoPlayerScreenState extends ConsumerState<NativeVideoPlayerScree
 
   Duration get _effectiveDuration {
     final streamDur = _videoPlayerController?.value.duration ?? Duration.zero;
-    if (streamDur > Duration.zero) return streamDur;
+    // Accept stream duration only if positive AND within a sane ceiling.
+    // ExoPlayer may emit 2^31-1 ms (~24.8 days) for unresolved HLS durations.
+    // This same cap must exist here (parent) and in ArmssPlayerControls (child) —
+    // the child's durationResolver calls this getter, so inconsistency causes the
+    // 100%-bar bug where the resolver returns the bad sentinel the child already rejected.
+    const maxSane = Duration(hours: 10);
+    if (streamDur > Duration.zero && streamDur <= maxSane) {
+      return streamDur;
+    }
+
+    // Use backend-supplied duration from PlaybackTicket (populated by transcoder).
+    // This is the most reliable source — available before HLS parsing completes.
+    final ticketDurSec = _playbackTicket?.durationSeconds ?? 0.0;
+    if (ticketDurSec > 0) return Duration(milliseconds: (ticketDurSec * 1000).round());
 
     final title = ref.read(titleDetailProvider(widget.titleId)).value;
     if (title != null) {
