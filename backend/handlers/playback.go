@@ -15,6 +15,7 @@ import (
 	"armss-ott-backend/middleware"
 	"armss-ott-backend/models"
 	"armss-ott-backend/services/access"
+	"armss-ott-backend/services/media"
 	"armss-ott-backend/services/metrics"
 	"armss-ott-backend/services/playback"
 	"armss-ott-backend/services/storage"
@@ -72,6 +73,7 @@ func GetPlaybackTicket(w http.ResponseWriter, r *http.Request) {
 	// Check titles table first
 	var titleReqTier sql.NullString
 	var titleVideoURL, titleTrailer sql.NullString
+	var epTitleID string
 	err := database.DB.QueryRowContext(r.Context(), "SELECT required_tier, video_url, trailer FROM titles WHERE id = ?", videoID).Scan(&titleReqTier, &titleVideoURL, &titleTrailer)
 	if err == nil {
 		if titleReqTier.Valid && titleReqTier.String != "" {
@@ -80,7 +82,6 @@ func GetPlaybackTicket(w http.ResponseWriter, r *http.Request) {
 		titleFound = true
 	} else {
 		// Check episodes table
-		var epTitleID string
 		var epVideoURL sql.NullString
 		epErr := database.DB.QueryRowContext(r.Context(), "SELECT title_id, video_url FROM episodes WHERE id = ?", videoID).Scan(&epTitleID, &epVideoURL)
 		if epErr == nil {
@@ -250,24 +251,63 @@ func GetPlaybackTicket(w http.ResponseWriter, r *http.Request) {
 		claims.UserID, videoID,
 	).Scan(&resumeSec)
 
-	// 6b. Authoritative video duration from DB (videos.duration column, populated by transcoder).
-	// Returned to client so the progress bar renders correctly before HLS manifest is parsed.
+	// 6b. Authoritative video duration
+	// Priority: probed/DB videos.duration > episodes.runtime*60 > local file probe > 0.
 	var durationSeconds float64
 	_ = database.DB.QueryRowContext(r.Context(),
 		"SELECT duration FROM videos WHERE id = ?",
 		videoID,
 	).Scan(&durationSeconds)
+
 	// Also try episodes table if videoID is an episode
 	if durationSeconds <= 0 {
+		var epRuntimeMinutes float64
 		_ = database.DB.QueryRowContext(r.Context(),
 			"SELECT runtime FROM episodes WHERE id = ?",
 			videoID,
-		).Scan(&durationSeconds)
-		// episodes.runtime is in minutes — convert to seconds
-		if durationSeconds > 0 {
-			durationSeconds *= 60
+		).Scan(&epRuntimeMinutes)
+		if epRuntimeMinutes > 0 {
+			durationSeconds = epRuntimeMinutes * 60
 		}
 	}
+
+	// If DB duration is 0 and source is a local /uploads file, probe with ProbeDuration and cache back to DB
+	if durationSeconds <= 0 {
+		var candidateURL string
+		if titleVideoURL.Valid && strings.Contains(titleVideoURL.String, "/uploads/") {
+			candidateURL = titleVideoURL.String
+		} else if titleTrailer.Valid && strings.Contains(titleTrailer.String, "/uploads/") {
+			candidateURL = titleTrailer.String
+		}
+
+		if candidateURL != "" {
+			uploadsDir := os.Getenv("UPLOADS_DIR")
+			if uploadsDir == "" {
+				uploadsDir = filepath.Join("public", "uploads")
+			}
+			relName := strings.TrimPrefix(candidateURL, "/uploads/")
+			relName = strings.TrimPrefix(relName, "uploads/")
+			diskPath := filepath.Join(uploadsDir, relName)
+
+			if probedDur, pErr := media.ProbeDuration(diskPath); pErr == nil && probedDur > 0 {
+				durationSeconds = probedDur
+				// Cache back into DB (videos table or titles runtime_min)
+				go func(tId, epId string, durSec float64) {
+					ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+					defer cancel()
+					// Cache in videos table if exists
+					_, _ = database.DB.ExecContext(ctx, "UPDATE videos SET duration = ? WHERE id = ?", durSec, tId)
+					// Cache in titles table if matches
+					rMin := int((durSec + 30) / 60)
+					_, _ = database.DB.ExecContext(ctx, "UPDATE titles SET runtime_min = ? WHERE id = ? AND (runtime_min = 0 OR runtime_min IS NULL)", rMin, tId)
+					if epId != "" {
+						_, _ = database.DB.ExecContext(ctx, "UPDATE episodes SET runtime = ? WHERE id = ? AND (runtime = 0 OR runtime IS NULL)", rMin, epId)
+					}
+				}(videoID, epTitleID, probedDur)
+			}
+		}
+	}
+
 	// Clamp: reject sentinel values and anything unreasonably large (>24h)
 	if durationSeconds <= 0 || durationSeconds > 86400 {
 		durationSeconds = 0
@@ -277,8 +317,8 @@ func GetPlaybackTicket(w http.ResponseWriter, r *http.Request) {
 		resumeSec = 0
 	}
 
-	// 7. Generate Signed Playback Token (5 minutes lifetime)
-	playbackToken, err := playback.GeneratePlaybackToken(claims.UserID, videoID, deviceID, clientType, maxHeight, 5*time.Minute)
+	// 7. Generate Signed Playback Token (configurable via PLAYBACK_TOKEN_TTL, default 6 hours)
+	playbackToken, err := playback.GeneratePlaybackToken(claims.UserID, videoID, deviceID, clientType, maxHeight, playback.GetPlaybackTokenTTL())
 	if err != nil {
 		http.Error(w, fmt.Sprintf(`{"error":"failed generating playback token: %v"}`, err), http.StatusInternalServerError)
 		return

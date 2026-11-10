@@ -16,6 +16,7 @@ import (
 	"armss-ott-backend/database"
 	"armss-ott-backend/middleware"
 	"armss-ott-backend/models"
+	"armss-ott-backend/services/media"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 )
@@ -756,13 +757,49 @@ func AdminUpload(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// If video file (MP4), asynchronously normalize (+faststart) and probe duration
+	var durationSec float64
+	lowerExt := strings.ToLower(ext)
+	if lowerExt == ".mp4" {
+		// Probe duration immediately if possible
+		if d, pErr := media.ProbeDuration(dstPath); pErr == nil && d > 0 {
+			durationSec = d
+		}
+
+		// Asynchronously ensure faststart if fragmented or moov at end
+		go func(filePath, fName string) {
+			if media.IsFragmentedOrNoFaststart(filePath) {
+				tmpNorm := filePath + ".norm"
+				bak := filePath + ".orig"
+				if nErr := media.NormalizeMP4(filePath, tmpNorm); nErr == nil {
+					if dur, err := media.ProbeDuration(tmpNorm); err == nil && dur > 0 {
+						_ = os.Rename(filePath, bak)
+						if rErr := os.Rename(tmpNorm, filePath); rErr != nil {
+							_ = os.Rename(bak, filePath)
+							log.Printf("[AdminUpload] Error replacing normalized file %s: %v", fName, rErr)
+						} else {
+							_ = os.Remove(bak)
+							log.Printf("[AdminUpload] Successfully normalized MP4 to faststart: %s (%.2fs)", fName, dur)
+						}
+					} else {
+						_ = os.Remove(tmpNorm)
+					}
+				} else {
+					_ = os.Remove(tmpNorm)
+					log.Printf("[AdminUpload] Normalizing MP4 %s failed (original retained): %v", fName, nErr)
+				}
+			}
+		}(dstPath, safeName)
+	}
+
 	url := "/uploads/" + safeName
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{
-		"success": true,
-		"url":     url,
-		"name":    header.Filename,
-		"size":    header.Size,
+		"success":  true,
+		"url":      url,
+		"name":     header.Filename,
+		"size":     header.Size,
+		"duration": durationSec,
 	})
 }
 

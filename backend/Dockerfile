@@ -8,6 +8,7 @@ WORKDIR /app
 
 # Download Go modules (git and ca-certificates are pre-installed in golang:bookworm)
 COPY go.mod go.sum ./
+ENV GOPROXY="https://goproxy.io,https://proxy.golang.org,direct"
 RUN go mod download
 
 # Copy source code

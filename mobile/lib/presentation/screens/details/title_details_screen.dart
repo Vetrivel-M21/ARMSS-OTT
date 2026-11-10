@@ -275,11 +275,9 @@ class _TitleDetailsScreenState extends ConsumerState<TitleDetailsScreen> with Si
                             onPressed: () {
                               if (isSeries && title.episodes.isNotEmpty) {
                                 final firstEp = title.episodes.first;
-                                final epUrl = firstEp.videoUrl != null && firstEp.videoUrl!.isNotEmpty ? Uri.encodeComponent(firstEp.videoUrl!) : '';
-                                context.push('/player/${title.id}?episode_id=${firstEp.id}&ep_title=${Uri.encodeComponent(firstEp.title)}${epUrl.isNotEmpty ? '&url=$epUrl' : ''}');
+                                context.push('/player/${title.id}?episode_id=${firstEp.id}&ep_title=${Uri.encodeComponent(firstEp.title)}');
                               } else {
-                                final movieUrl = title.videoUrl != null && title.videoUrl!.isNotEmpty ? Uri.encodeComponent(title.videoUrl!) : '';
-                                context.push('/player/${title.id}${movieUrl.isNotEmpty ? '?url=$movieUrl' : ''}');
+                                context.push('/player/${title.id}');
                               }
                             },
                             icon: const Icon(Icons.play_arrow_rounded, color: Colors.black, size: 28),
@@ -531,8 +529,7 @@ class _TitleDetailsScreenState extends ConsumerState<TitleDetailsScreen> with Si
                         context.push('/plans');
                         return;
                       }
-                      final epUrl = ep.videoUrl != null && ep.videoUrl!.isNotEmpty ? Uri.encodeComponent(ep.videoUrl!) : '';
-                      context.push('/player/${title.id}?episode_id=${ep.id}&ep_title=${Uri.encodeComponent(ep.title)}${epUrl.isNotEmpty ? '&url=$epUrl' : ''}');
+                      context.push('/player/${title.id}?episode_id=${ep.id}&ep_title=${Uri.encodeComponent(ep.title)}');
                     },
                     child: Container(
                       padding: const EdgeInsets.all(6),

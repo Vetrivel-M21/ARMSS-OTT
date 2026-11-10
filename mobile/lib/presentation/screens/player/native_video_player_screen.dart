@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:math';
 import 'package:chewie/chewie.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -63,6 +64,7 @@ class _NativeVideoPlayerScreenState extends ConsumerState<NativeVideoPlayerScree
   String _selectedSubtitleTrack = 'Off';
   VideoDisplayMode _displayMode = VideoDisplayMode.fit;
   Duration _lastPosition = Duration.zero;
+  int _lastTickLoggedMs = 0;
 
   String? _currentEpisodeId;
   String? _currentEpTitle;
@@ -241,6 +243,7 @@ class _NativeVideoPlayerScreenState extends ConsumerState<NativeVideoPlayerScree
 
         videoController = VideoPlayerController.networkUrl(
           Uri.parse(targetUrl),
+          formatHint: targetUrl.contains('.m3u8') ? VideoFormat.hls : VideoFormat.other,
           httpHeaders: headers,
           videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
         );
@@ -248,6 +251,15 @@ class _NativeVideoPlayerScreenState extends ConsumerState<NativeVideoPlayerScree
 
       _videoPlayerController = videoController;
       await videoController.initialize();
+
+      if (kDebugMode) {
+        debugPrint(
+          '[NativePlayer] after initialize(): url=$targetUrl, '
+          'duration=${videoController.value.duration}, '
+          'position=${videoController.value.position}, '
+          'isInitialized=${videoController.value.isInitialized}',
+        );
+      }
 
       if (!mounted) {
         videoController.dispose();
@@ -367,7 +379,21 @@ class _NativeVideoPlayerScreenState extends ConsumerState<NativeVideoPlayerScree
     final vc = _videoPlayerController;
     if (vc == null || !vc.value.isInitialized) return;
 
-    _lastPosition = vc.value.position;
+    if (vc.value.position > Duration.zero) {
+      _lastPosition = vc.value.position;
+    }
+
+    if (kDebugMode) {
+      final nowMs = DateTime.now().millisecondsSinceEpoch;
+      if (nowMs - _lastTickLoggedMs >= 1000) {
+        _lastTickLoggedMs = nowMs;
+        debugPrint(
+          '[NativePlayer Tick] pos=${vc.value.position}, '
+          'dur=${vc.value.duration}, '
+          'isPlaying=${vc.value.isPlaying}',
+        );
+      }
+    }
 
     // Wakelock management
     if (vc.value.isPlaying) {
@@ -407,25 +433,22 @@ class _NativeVideoPlayerScreenState extends ConsumerState<NativeVideoPlayerScree
   }
 
   Duration get _effectiveDuration {
+    // a) controller.value.duration if > 0 and <= 12 hours (real, from ExoPlayer)
     final streamDur = _videoPlayerController?.value.duration ?? Duration.zero;
-    // Accept stream duration only if positive AND within a sane ceiling.
-    // ExoPlayer may emit 2^31-1 ms (~24.8 days) for unresolved HLS durations.
-    // This same cap must exist here (parent) and in ArmssPlayerControls (child) —
-    // the child's durationResolver calls this getter, so inconsistency causes the
-    // 100%-bar bug where the resolver returns the bad sentinel the child already rejected.
-    const maxSane = Duration(hours: 10);
+    const maxSane = Duration(hours: 12);
     if (streamDur > Duration.zero && streamDur <= maxSane) {
       return streamDur;
     }
 
-    // Use backend-supplied duration from PlaybackTicket (populated by transcoder).
-    // This is the most reliable source — available before HLS parsing completes.
+    // b) ticket.durationSeconds if > 0
     final ticketDurSec = _playbackTicket?.durationSeconds ?? 0.0;
-    if (ticketDurSec > 0) return Duration(milliseconds: (ticketDurSec * 1000).round());
+    if (ticketDurSec > 0) {
+      return Duration(milliseconds: (ticketDurSec * 1000).round());
+    }
 
+    // c) title/episode runtime if > 0
     final title = ref.read(titleDetailProvider(widget.titleId)).value;
     if (title != null) {
-      // 1. Episode runtime check (if series)
       if (title.kind == 'series' && title.episodes.isNotEmpty) {
         final ep = _currentEpisodeId != null
             ? title.episodes.where((e) => e.id == _currentEpisodeId).firstOrNull
@@ -433,16 +456,13 @@ class _NativeVideoPlayerScreenState extends ConsumerState<NativeVideoPlayerScree
         if (ep != null && ep.runtime > 0) {
           return Duration(minutes: ep.runtime);
         }
-        return const Duration(minutes: 45);
-      }
-
-      // 2. Movie/film runtime check
-      if (title.runtimeMin > 0) {
+      } else if (title.runtimeMin > 0) {
         return Duration(minutes: title.runtimeMin);
       }
     }
 
-    return const Duration(minutes: 45);
+    // d) Duration.zero (NOT 45 min or 120 min)
+    return Duration.zero;
   }
 
   void _startHeartbeatTimer() {

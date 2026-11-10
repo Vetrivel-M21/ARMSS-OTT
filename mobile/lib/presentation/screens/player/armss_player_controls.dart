@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:chewie/chewie.dart';
 import 'package:video_player/video_player.dart';
@@ -57,6 +58,7 @@ class _ArmssPlayerControlsState extends State<ArmssPlayerControls> {
   Timer? _hideTimer;
   bool _isDragging = false;
   double _dragProgress = 0.0; // 0.0 to 1.0
+  Duration _savedPausePosition = Duration.zero;
 
   /// Polling timer that keeps checking for a valid HLS duration.
   /// Needed because ExoPlayer / AVPlayer may not know the duration at
@@ -64,8 +66,9 @@ class _ArmssPlayerControlsState extends State<ArmssPlayerControls> {
   Timer? _durationPollTimer;
 
   /// Maximum sane video duration. ExoPlayer emits 2^31-1 ms as a sentinel for
-  /// "live / unknown" streams. We cap at 10 h to detect and discard that.
-  static const Duration _maxSaneDuration = Duration(hours: 10);
+  /// "live / unknown" streams. We cap at 12 h to detect and discard that.
+  static const Duration _maxSaneDuration = Duration(hours: 12);
+  Timer? _seekStallTimer;
 
   @override
   void didChangeDependencies() {
@@ -92,6 +95,7 @@ class _ArmssPlayerControlsState extends State<ArmssPlayerControls> {
   void dispose() {
     _hideTimer?.cancel();
     _durationPollTimer?.cancel();
+    _seekStallTimer?.cancel();
     _videoController?.removeListener(_onControllerTick);
     super.dispose();
   }
@@ -128,24 +132,30 @@ class _ArmssPlayerControlsState extends State<ArmssPlayerControls> {
   /// Returns the best-effort total duration for the current stream.
   ///
   /// Priority:
-  ///   1. Stream-reported duration (from `video_player`) — only if sane.
-  ///   2. Caller-supplied `durationResolver` (from metadata / backend ticket).
-  ///   3. Static `fallbackDuration` passed at construction.
-  ///   4. Hardcoded 45-minute default (safest non-zero value).
+  ///   a) controller.value.duration if > 0 and <= 12 hours (real, from ExoPlayer)
+  ///   b) Caller-supplied `durationResolver` (ticket / DB runtime) if > 0
+  ///   c) Static `fallbackDuration` passed at construction if > 0
+  ///   d) Duration.zero (When zero, hide total time and disable seekbar)
   Duration get _effectiveDuration {
+    // a) Stream-reported duration from ExoPlayer (only if sane and > 0)
     final streamDur = _videoController?.value.duration ?? Duration.zero;
-    // Accept stream duration only if positive AND within a sane ceiling.
-    // ExoPlayer may emit 2^31-1 ms for unresolved HLS durations.
     if (streamDur > Duration.zero && streamDur <= _maxSaneDuration) {
       return streamDur;
     }
 
+    // b) Authoritative durationResolver (backend ticket / metadata)
     if (widget.durationResolver != null) {
       final resolved = widget.durationResolver!();
       if (resolved > Duration.zero) return resolved;
     }
-    if (widget.fallbackDuration > Duration.zero) return widget.fallbackDuration;
-    return const Duration(minutes: 45);
+
+    // c) Fallback duration
+    if (widget.fallbackDuration > Duration.zero) {
+      return widget.fallbackDuration;
+    }
+
+    // d) Duration.zero (NOT 45 min or 120 min)
+    return Duration.zero;
   }
 
   void _resetHideTimer() {
@@ -178,12 +188,22 @@ class _ArmssPlayerControlsState extends State<ArmssPlayerControls> {
     final vc = _videoController;
     if (vc == null) return;
     if (vc.value.isPlaying) {
+      if (vc.value.position > Duration.zero) {
+        _savedPausePosition = vc.value.position;
+      }
       vc.pause();
       setState(() {
         _controlsVisible = true;
       });
       _hideTimer?.cancel();
     } else {
+      // Resume protection: if position jumps back to near 0 while stored position is > 5 s, call seekTo(storedPosition) once.
+      if (vc.value.position <= const Duration(seconds: 1) && _savedPausePosition > const Duration(seconds: 5)) {
+        if (kDebugMode) {
+          debugPrint('[ArmssPlayerControls] Resume protection triggered: restoring $_savedPausePosition');
+        }
+        vc.seekTo(_savedPausePosition);
+      }
       vc.play();
       _resetHideTimer();
     }
@@ -192,23 +212,55 @@ class _ArmssPlayerControlsState extends State<ArmssPlayerControls> {
   void _seekRelative(int seconds) {
     final vc = _videoController;
     if (vc == null) return;
+    final streamDur = vc.value.duration;
+    if (streamDur <= Duration.zero) return;
+
     final curPos = vc.value.position;
-    final dur = _effectiveDuration;
     var target = curPos + Duration(seconds: seconds);
     if (target < Duration.zero) target = Duration.zero;
-    if (dur > Duration.zero && target > dur) target = dur;
+    if (target > streamDur) target = streamDur;
 
-    vc.seekTo(target);
+    _performSeek(vc, target);
     _resetHideTimer();
   }
 
   void _onSeekToPercent(double percent) {
     final vc = _videoController;
-    final dur = _effectiveDuration;
-    if (vc == null || dur <= Duration.zero) return;
+    if (vc == null) return;
 
-    final targetMs = (percent.clamp(0.0, 1.0) * dur.inMilliseconds).round();
-    vc.seekTo(Duration(milliseconds: targetMs));
+    // Seek safety: only seek if controller.value.duration > 0
+    final streamDur = vc.value.duration;
+    if (streamDur <= Duration.zero) return;
+
+    final posBefore = vc.value.position;
+    // Clamp the target to controller.value.duration, not to the ticket duration
+    final targetMs = (percent.clamp(0.0, 1.0) * streamDur.inMilliseconds).round();
+    final target = Duration(milliseconds: targetMs);
+
+    if (kDebugMode) {
+      debugPrint('[ArmssPlayerControls] _onSeekToPercent: targetMs=$targetMs, posBefore=$posBefore');
+    }
+
+    _performSeek(vc, target);
+  }
+
+  void _performSeek(VideoPlayerController vc, Duration target) {
+    vc.seekTo(target);
+
+    // After seekTo, if position stays 0 for 2 seconds while isPlaying, show non-blocking toast
+    _seekStallTimer?.cancel();
+    _seekStallTimer = Timer(const Duration(seconds: 2), () {
+      if (!mounted) return;
+      if (vc.value.isPlaying && vc.value.position <= const Duration(seconds: 1)) {
+        ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+          const SnackBar(
+            content: Text('Seeking unavailable for this video'),
+            duration: Duration(seconds: 2),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    });
   }
 
   String _formatTime(Duration duration, bool hasHours) {
@@ -419,14 +471,15 @@ class _ArmssPlayerControlsState extends State<ArmssPlayerControls> {
                               fontFeatures: [FontFeature.tabularFigures()],
                             ),
                           ),
-                          Text(
-                            ' / ${_formatTime(totalDur, hasHours)}',
-                            style: TextStyle(
-                              color: Colors.white.withOpacity(0.7),
-                              fontSize: 13,
-                              fontFeatures: const [FontFeature.tabularFigures()],
+                          if (totalDur > Duration.zero)
+                            Text(
+                              ' / ${_formatTime(totalDur, hasHours)}',
+                              style: TextStyle(
+                                color: Colors.white.withOpacity(0.7),
+                                fontSize: 13,
+                                fontFeatures: const [FontFeature.tabularFigures()],
+                              ),
                             ),
-                          ),
 
                           // Volume / Mute Button
                           const SizedBox(width: 8),
@@ -483,36 +536,47 @@ class _ArmssPlayerControlsState extends State<ArmssPlayerControls> {
   }
 
   Widget _buildProgressBar(double progress, Duration totalDur) {
+    final streamDur = _videoController?.value.duration ?? Duration.zero;
+    final canSeek = streamDur > Duration.zero;
+
     return LayoutBuilder(
       builder: (context, constraints) {
         final totalWidth = constraints.maxWidth;
 
         return GestureDetector(
           behavior: HitTestBehavior.opaque,
-          onHorizontalDragStart: (details) {
-            _hideTimer?.cancel();
-            setState(() {
-              _isDragging = true;
-              _dragProgress = (details.localPosition.dx / totalWidth).clamp(0.0, 1.0);
-            });
-          },
-          onHorizontalDragUpdate: (details) {
-            setState(() {
-              _dragProgress = (details.localPosition.dx / totalWidth).clamp(0.0, 1.0);
-            });
-          },
-          onHorizontalDragEnd: (details) {
-            setState(() {
-              _isDragging = false;
-            });
-            _onSeekToPercent(_dragProgress);
-            _resetHideTimer();
-          },
-          onTapDown: (details) {
-            final tapPercent = (details.localPosition.dx / totalWidth).clamp(0.0, 1.0);
-            _onSeekToPercent(tapPercent);
-            _resetHideTimer();
-          },
+          onHorizontalDragStart: canSeek
+              ? (details) {
+                  _hideTimer?.cancel();
+                  setState(() {
+                    _isDragging = true;
+                    _dragProgress = (details.localPosition.dx / totalWidth).clamp(0.0, 1.0);
+                  });
+                }
+              : null,
+          onHorizontalDragUpdate: canSeek
+              ? (details) {
+                  setState(() {
+                    _dragProgress = (details.localPosition.dx / totalWidth).clamp(0.0, 1.0);
+                  });
+                }
+              : null,
+          onHorizontalDragEnd: canSeek
+              ? (details) {
+                  setState(() {
+                    _isDragging = false;
+                  });
+                  _onSeekToPercent(_dragProgress);
+                  _resetHideTimer();
+                }
+              : null,
+          onTapDown: canSeek
+              ? (details) {
+                  final tapPercent = (details.localPosition.dx / totalWidth).clamp(0.0, 1.0);
+                  _onSeekToPercent(tapPercent);
+                  _resetHideTimer();
+                }
+              : null,
           child: Container(
             height: 24, // Touch target height
             alignment: Alignment.center,
@@ -556,31 +620,32 @@ class _ArmssPlayerControlsState extends State<ArmssPlayerControls> {
                   height: 4,
                   width: (progress * totalWidth).clamp(0.0, totalWidth),
                   decoration: BoxDecoration(
-                    color: AppColors.primary,
+                    color: canSeek ? AppColors.primary : Colors.white24,
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
 
-                // Handle Scrubber Circle
-                Positioned(
-                  left: (progress * totalWidth - 6).clamp(0.0, totalWidth - 12),
-                  top: -4,
-                  child: Container(
-                    width: 12,
-                    height: 12,
-                    decoration: BoxDecoration(
-                      color: AppColors.primary,
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.5),
-                          blurRadius: 4,
-                          spreadRadius: 1,
-                        ),
-                      ],
+                // Handle Scrubber Circle (only visible when seekable)
+                if (canSeek)
+                  Positioned(
+                    left: (progress * totalWidth - 6).clamp(0.0, totalWidth - 12),
+                    top: -4,
+                    child: Container(
+                      width: 12,
+                      height: 12,
+                      decoration: BoxDecoration(
+                        color: AppColors.primary,
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.5),
+                            blurRadius: 4,
+                            spreadRadius: 1,
+                          ),
+                        ],
+                      ),
                     ),
                   ),
-                ),
               ],
             ),
           ),

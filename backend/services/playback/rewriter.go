@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -19,6 +20,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
+// resolutionRegex matches RESOLUTION=WIDTHxHEIGHT in #EXT-X-STREAM-INF
 var (
 	resolutionRegex = regexp.MustCompile(`RESOLUTION=(\d+)x(\d+)`)
 	mapUriRegex     = regexp.MustCompile(`URI="([^"]+)"`)
@@ -27,6 +29,31 @@ var (
 	masterCacheMu sync.RWMutex
 	masterCache   = make(map[string]masterParsedCache)
 )
+
+// DefaultTTL is 6 hours.
+// In earlier versions, tokens and presigned URLs were hardcoded to 5 minutes.
+// For feature-length films (e.g. 2-3 hour movies), players buffering or seeking after
+// 5 minutes would receive 403 Forbidden on remaining segment downloads.
+// Both PLAYBACK_TOKEN_TTL and PRESIGN_TTL can be overridden via environment variables.
+const DefaultTTL = 6 * time.Hour
+
+func GetPlaybackTokenTTL() time.Duration {
+	if v := os.Getenv("PLAYBACK_TOKEN_TTL"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil && d > 0 {
+			return d
+		}
+	}
+	return DefaultTTL
+}
+
+func GetPresignTTL() time.Duration {
+	if v := os.Getenv("PRESIGN_TTL"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil && d > 0 {
+			return d
+		}
+	}
+	return DefaultTTL
+}
 
 type masterParsedItem struct {
 	isRendition bool
@@ -40,10 +67,10 @@ type masterParsedCache struct {
 	items []masterParsedItem
 }
 
-// GeneratePlaybackToken generates a signed JWT token valid for 5 minutes.
+// GeneratePlaybackToken generates a signed JWT token with configurable lifetime (defaults to 6h).
 func GeneratePlaybackToken(userID, videoID, deviceID, clientType string, maxHeight int, lifetime time.Duration) (string, error) {
-	if lifetime == 0 {
-		lifetime = 5 * time.Minute
+	if lifetime <= 0 {
+		lifetime = GetPlaybackTokenTTL()
 	}
 
 	claims := models.PlaybackTokenClaims{
@@ -206,7 +233,9 @@ func RewriteMasterPlaylist(rawContent []byte, videoID, tokenStr string, maxHeigh
 	return sb.String()
 }
 
-// RewriteRenditionPlaylist rewrites segment URIs and init.mp4 into 5-minute presigned S3 URLs.
+// RewriteRenditionPlaylist rewrites segment URIs and init.mp4 into presigned S3 URLs.
+// Presigned URLs use GetPresignTTL() (configurable via PRESIGN_TTL, default 6 hours)
+// so full movies do not suffer segment download expiration mid-stream.
 func RewriteRenditionPlaylist(
 	ctx context.Context,
 	rawContent []byte,
@@ -219,6 +248,7 @@ func RewriteRenditionPlaylist(
 	scanner := bufio.NewScanner(bytes.NewReader(rawContent))
 	var outLines []string
 	bucket := storageSvc.HLSBucket()
+	presignTTL := GetPresignTTL()
 
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
@@ -232,7 +262,7 @@ func RewriteRenditionPlaylist(
 			if len(matches) == 2 {
 				origUri := matches[1]
 				s3Key := fmt.Sprintf("videos/%s/%s", videoID, origUri)
-				presignedURL, err := storageSvc.GeneratePresignedGetURL(ctx, bucket, s3Key, 5*time.Minute)
+				presignedURL, err := storageSvc.GeneratePresignedGetURL(ctx, bucket, s3Key, presignTTL)
 				if err != nil {
 					return "", fmt.Errorf("presigning init map %s: %w", s3Key, err)
 				}
@@ -255,7 +285,7 @@ func RewriteRenditionPlaylist(
 		// 3. Rewrite media segment URI (ends with .m4s or .ts, not a comment/tag)
 		if !strings.HasPrefix(line, "#") && (strings.HasSuffix(line, ".m4s") || strings.HasSuffix(line, ".ts") || strings.HasSuffix(line, ".mp4")) {
 			s3Key := fmt.Sprintf("videos/%s/%s", videoID, line)
-			presignedURL, err := storageSvc.GeneratePresignedGetURL(ctx, bucket, s3Key, 5*time.Minute)
+			presignedURL, err := storageSvc.GeneratePresignedGetURL(ctx, bucket, s3Key, presignTTL)
 			if err != nil {
 				return "", fmt.Errorf("presigning segment %s: %w", s3Key, err)
 			}

@@ -23,18 +23,55 @@ class HomeScreen extends ConsumerStatefulWidget {
   ConsumerState<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends ConsumerState<HomeScreen> {
+class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObserver {
   String _selectedCategory = 'All';
   final PageController _heroController = PageController();
+  late final ScrollController _scrollController;
   int _currentHeroIndex = 0;
 
   VideoPlayerController? _heroVideoController;
   bool _isHeroVideoPlaying = false;
   bool _isMuted = true;
   String? _activeHeroTitleId;
+  bool _isScrolledAway = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _scrollController = ScrollController()..addListener(_onScroll);
+  }
+
+  void _onScroll() {
+    if (!_scrollController.hasClients) return;
+    final isAway = _scrollController.offset > 350;
+    if (isAway != _isScrolledAway) {
+      _isScrolledAway = isAway;
+      if (isAway) {
+        _heroVideoController?.pause();
+      } else {
+        if (mounted && _heroVideoController != null && !_heroVideoController!.value.isPlaying) {
+          _heroVideoController?.play();
+        }
+      }
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
+      _heroVideoController?.pause();
+    } else if (state == AppLifecycleState.resumed) {
+      if (mounted && _heroVideoController != null && !_isScrolledAway) {
+        _heroVideoController?.play();
+      }
+    }
+  }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _scrollController.dispose();
     _heroController.dispose();
     _heroVideoController?.pause();
     _heroVideoController?.dispose();
@@ -66,7 +103,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       if (!mounted || _heroVideoController != controller) return;
       controller.setVolume(_isMuted ? 0.0 : 1.0);
       controller.setLooping(true);
-      controller.play();
+      if (!_isScrolledAway) {
+        controller.play();
+      }
       setState(() {
         _isHeroVideoPlaying = true;
       });
@@ -78,12 +117,20 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     });
   }
 
-  void _onTitleTap(TitleModel title) {
-    context.push('/title/${title.id}');
+  Future<void> _onTitleTap(TitleModel title) async {
+    _heroVideoController?.pause();
+    await context.push('/title/${title.id}');
+    if (mounted && _heroVideoController != null && !_isScrolledAway) {
+      _heroVideoController?.play();
+    }
   }
 
-  void _onPlayTap(TitleModel title) {
-    context.push('/player/${title.id}');
+  Future<void> _onPlayTap(TitleModel title) async {
+    _heroVideoController?.pause();
+    await context.push('/player/${title.id}');
+    if (mounted && _heroVideoController != null && !_isScrolledAway) {
+      _heroVideoController?.play();
+    }
   }
 
   Future<void> _refreshCatalog() async {
@@ -196,6 +243,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 displacement: topNavClearance + 15,
                 onRefresh: _refreshCatalog,
                 child: SingleChildScrollView(
+                  controller: _scrollController,
                   physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -579,8 +627,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   onCategorySelected: (cat) {
                     setState(() => _selectedCategory = cat);
                   },
-                  onProfileTap: () => context.go('/profiles'),
-                  onSearchTap: () => context.go('/search'),
+                  onProfileTap: () async {
+                    _heroVideoController?.pause();
+                    await context.push('/profiles');
+                    if (mounted && _heroVideoController != null && !_isScrolledAway) {
+                      _heroVideoController?.play();
+                    }
+                  },
+                  onSearchTap: () {
+                    _heroVideoController?.pause();
+                    context.go('/search');
+                  },
                   onRefreshTap: _refreshCatalog,
                 ),
               ),

@@ -1,5 +1,6 @@
-package com.armss.ott.armss_ott_mobile
+package com.armss.aura
 
 import io.flutter.embedding.android.FlutterActivity
 
 class MainActivity : FlutterActivity()
+
