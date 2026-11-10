@@ -137,24 +137,39 @@ class _ArmssPlayerControlsState extends State<ArmssPlayerControls> {
   ///   c) Static `fallbackDuration` passed at construction if > 0
   ///   d) Duration.zero (When zero, hide total time and disable seekbar)
   Duration get _effectiveDuration {
-    // a) Stream-reported duration from ExoPlayer (only if sane and > 0)
+    const minSaneStream = Duration(seconds: 60);
+
+    // a) Authoritative durationResolver (backend ticket / metadata)
+    if (widget.durationResolver != null) {
+      final resolved = widget.durationResolver!();
+      if (resolved >= const Duration(seconds: 30)) return resolved;
+    }
+
+    // b) Fallback duration passed at construction
+    if (widget.fallbackDuration >= const Duration(seconds: 30)) {
+      return widget.fallbackDuration;
+    }
+
+    // c) Stream-reported duration from ExoPlayer (only if sane >= 60s)
     final streamDur = _videoController?.value.duration ?? Duration.zero;
-    if (streamDur > Duration.zero && streamDur <= _maxSaneDuration) {
+    if (streamDur >= minSaneStream && streamDur <= _maxSaneDuration) {
       return streamDur;
     }
 
-    // b) Authoritative durationResolver (backend ticket / metadata)
+    // d) Check short clip fallback (< 30s) if provided
     if (widget.durationResolver != null) {
       final resolved = widget.durationResolver!();
       if (resolved > Duration.zero) return resolved;
     }
-
-    // c) Fallback duration
     if (widget.fallbackDuration > Duration.zero) {
       return widget.fallbackDuration;
     }
 
-    // d) Duration.zero (NOT 45 min or 120 min)
+    // e) Stream duration for short clips if > 0
+    if (streamDur > Duration.zero && streamDur <= _maxSaneDuration) {
+      return streamDur;
+    }
+
     return Duration.zero;
   }
 
@@ -197,12 +212,14 @@ class _ArmssPlayerControlsState extends State<ArmssPlayerControls> {
       });
       _hideTimer?.cancel();
     } else {
-      // Resume protection: if position jumps back to near 0 while stored position is > 5 s, call seekTo(storedPosition) once.
-      if (vc.value.position <= const Duration(seconds: 1) && _savedPausePosition > const Duration(seconds: 5)) {
-        if (kDebugMode) {
-          debugPrint('[ArmssPlayerControls] Resume protection triggered: restoring $_savedPausePosition');
+      // Resume protection: if paused position was recorded, ensure we resume from it!
+      if (_savedPausePosition > Duration.zero) {
+        if (vc.value.position <= const Duration(seconds: 1) || (vc.value.position - _savedPausePosition).abs() > const Duration(seconds: 2)) {
+          if (kDebugMode) {
+            debugPrint('[ArmssPlayerControls] Resume protection triggered: restoring $_savedPausePosition');
+          }
+          vc.seekTo(_savedPausePosition);
         }
-        vc.seekTo(_savedPausePosition);
       }
       vc.play();
       _resetHideTimer();
@@ -212,14 +229,15 @@ class _ArmssPlayerControlsState extends State<ArmssPlayerControls> {
   void _seekRelative(int seconds) {
     final vc = _videoController;
     if (vc == null) return;
-    final streamDur = vc.value.duration;
-    if (streamDur <= Duration.zero) return;
+    final totalDur = _effectiveDuration;
+    if (totalDur <= Duration.zero) return;
 
     final curPos = vc.value.position;
     var target = curPos + Duration(seconds: seconds);
     if (target < Duration.zero) target = Duration.zero;
-    if (target > streamDur) target = streamDur;
+    if (target > totalDur) target = totalDur;
 
+    _savedPausePosition = target;
     _performSeek(vc, target);
     _resetHideTimer();
   }
@@ -228,14 +246,15 @@ class _ArmssPlayerControlsState extends State<ArmssPlayerControls> {
     final vc = _videoController;
     if (vc == null) return;
 
-    // Seek safety: only seek if controller.value.duration > 0
-    final streamDur = vc.value.duration;
-    if (streamDur <= Duration.zero) return;
+    final totalDur = _effectiveDuration;
+    if (totalDur <= Duration.zero) return;
 
     final posBefore = vc.value.position;
-    // Clamp the target to controller.value.duration, not to the ticket duration
-    final targetMs = (percent.clamp(0.0, 1.0) * streamDur.inMilliseconds).round();
+    // Calculate target timestamp from the authoritative total duration
+    final targetMs = (percent.clamp(0.0, 1.0) * totalDur.inMilliseconds).round();
     final target = Duration(milliseconds: targetMs);
+
+    _savedPausePosition = target;
 
     if (kDebugMode) {
       debugPrint('[ArmssPlayerControls] _onSeekToPercent: targetMs=$targetMs, posBefore=$posBefore');
@@ -247,11 +266,11 @@ class _ArmssPlayerControlsState extends State<ArmssPlayerControls> {
   void _performSeek(VideoPlayerController vc, Duration target) {
     vc.seekTo(target);
 
-    // After seekTo, if position stays 0 for 2 seconds while isPlaying, show non-blocking toast
+    // After seekTo, if target was > 5s but position stays near 0 for 2 seconds while isPlaying, show non-blocking toast
     _seekStallTimer?.cancel();
     _seekStallTimer = Timer(const Duration(seconds: 2), () {
       if (!mounted) return;
-      if (vc.value.isPlaying && vc.value.position <= const Duration(seconds: 1)) {
+      if (target > const Duration(seconds: 5) && vc.value.isPlaying && vc.value.position <= const Duration(seconds: 1)) {
         ScaffoldMessenger.maybeOf(context)?.showSnackBar(
           const SnackBar(
             content: Text('Seeking unavailable for this video'),
@@ -536,8 +555,7 @@ class _ArmssPlayerControlsState extends State<ArmssPlayerControls> {
   }
 
   Widget _buildProgressBar(double progress, Duration totalDur) {
-    final streamDur = _videoController?.value.duration ?? Duration.zero;
-    final canSeek = streamDur > Duration.zero;
+    final canSeek = totalDur > Duration.zero;
 
     return LayoutBuilder(
       builder: (context, constraints) {

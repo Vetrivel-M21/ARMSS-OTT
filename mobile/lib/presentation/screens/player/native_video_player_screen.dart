@@ -95,8 +95,12 @@ class _NativeVideoPlayerScreenState extends ConsumerState<NativeVideoPlayerScree
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
-      // Pause playback and release wakelock when backgrounded
+    // Only pause when actually backgrounded or hidden (not on transient inactive events like screenshots or notification shade)
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.hidden) {
+      final vc = _videoPlayerController;
+      if (vc != null && vc.value.isInitialized && vc.value.position > Duration.zero) {
+        _lastPosition = vc.value.position;
+      }
       _videoPlayerController?.pause();
       WakelockPlus.disable();
     }
@@ -122,6 +126,9 @@ class _NativeVideoPlayerScreenState extends ConsumerState<NativeVideoPlayerScree
     });
 
     final targetId = _currentEpisodeId ?? widget.titleId;
+
+    // Pre-fetch title details so metadata duration is immediately available
+    ref.read(titleDetailProvider(widget.titleId).future).ignore();
 
     // Fast path 1: Check if content was downloaded locally for zero-buffering offline playback
     final localPath = downloadsRepository.getLocalPlaybackPath(targetId);
@@ -433,20 +440,17 @@ class _NativeVideoPlayerScreenState extends ConsumerState<NativeVideoPlayerScree
   }
 
   Duration get _effectiveDuration {
-    // a) controller.value.duration if > 0 and <= 12 hours (real, from ExoPlayer)
-    final streamDur = _videoPlayerController?.value.duration ?? Duration.zero;
+    const minSaneStream = Duration(seconds: 60);
     const maxSane = Duration(hours: 12);
-    if (streamDur > Duration.zero && streamDur <= maxSane) {
-      return streamDur;
-    }
+    final streamDur = _videoPlayerController?.value.duration ?? Duration.zero;
 
-    // b) ticket.durationSeconds if > 0
+    // 1. Authoritative server ticket duration (from backend DB)
     final ticketDurSec = _playbackTicket?.durationSeconds ?? 0.0;
-    if (ticketDurSec > 0) {
+    if (ticketDurSec >= 30) {
       return Duration(milliseconds: (ticketDurSec * 1000).round());
     }
 
-    // c) title/episode runtime if > 0
+    // 2. Catalog metadata runtime (from titles / episodes table)
     final title = ref.read(titleDetailProvider(widget.titleId)).value;
     if (title != null) {
       if (title.kind == 'series' && title.episodes.isNotEmpty) {
@@ -461,7 +465,21 @@ class _NativeVideoPlayerScreenState extends ConsumerState<NativeVideoPlayerScree
       }
     }
 
-    // d) Duration.zero (NOT 45 min or 120 min)
+    // 3. Fall back to stream duration from ExoPlayer/AVPlayer ONLY if sane (>= 60s)
+    if (streamDur >= minSaneStream && streamDur <= maxSane) {
+      return streamDur;
+    }
+
+    // Short clips (< 30s) where server provided ticket duration
+    if (ticketDurSec > 0) {
+      return Duration(milliseconds: (ticketDurSec * 1000).round());
+    }
+
+    // Short clips where no metadata was provided
+    if (streamDur > Duration.zero && streamDur <= maxSane) {
+      return streamDur;
+    }
+
     return Duration.zero;
   }
 

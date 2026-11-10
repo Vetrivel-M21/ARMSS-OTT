@@ -254,22 +254,56 @@ func GetPlaybackTicket(w http.ResponseWriter, r *http.Request) {
 	).Scan(&resumeSec)
 
 	// 6b. Authoritative video duration
-	// Priority: probed/DB videos.duration > episodes.runtime*60 > local file probe > 0.
+	// Priority: probed/DB videos.duration > titles.runtime_min*60 > episodes.runtime_min*60 > referenced video ID > local file probe > 0.
 	var durationSeconds float64
 	_ = database.DB.QueryRowContext(r.Context(),
 		"SELECT duration FROM videos WHERE id = ?",
 		videoID,
 	).Scan(&durationSeconds)
 
-	// Also try episodes table if videoID is an episode
+	// Check titles table (movies or documentary runtime_min)
+	if durationSeconds <= 0 {
+		var titleRuntimeMin float64
+		_ = database.DB.QueryRowContext(r.Context(),
+			"SELECT runtime_min FROM titles WHERE id = ?",
+			videoID,
+		).Scan(&titleRuntimeMin)
+		if titleRuntimeMin > 0 {
+			durationSeconds = titleRuntimeMin * 60
+		}
+	}
+
+	// Also try episodes table if videoID is an episode (column is runtime_min)
 	if durationSeconds <= 0 {
 		var epRuntimeMinutes float64
 		_ = database.DB.QueryRowContext(r.Context(),
-			"SELECT runtime FROM episodes WHERE id = ?",
+			"SELECT runtime_min FROM episodes WHERE id = ?",
 			videoID,
 		).Scan(&epRuntimeMinutes)
 		if epRuntimeMinutes > 0 {
 			durationSeconds = epRuntimeMinutes * 60
+		}
+	}
+
+	// If title or episode points to a transcoded video in videos table, e.g. /api/videos/{uid}/master.m3u8
+	if durationSeconds <= 0 && titleVideoURL.Valid {
+		urlStr := titleVideoURL.String
+		if strings.Contains(urlStr, "/videos/") {
+			parts := strings.Split(urlStr, "/videos/")
+			if len(parts) > 1 {
+				subParts := strings.Split(parts[1], "/")
+				if len(subParts) > 0 && subParts[0] != "" {
+					refVideoID := subParts[0]
+					var refDur float64
+					_ = database.DB.QueryRowContext(r.Context(),
+						"SELECT duration FROM videos WHERE id = ?",
+						refVideoID,
+					).Scan(&refDur)
+					if refDur > 0 {
+						durationSeconds = refDur
+					}
+				}
+			}
 		}
 	}
 
@@ -303,7 +337,7 @@ func GetPlaybackTicket(w http.ResponseWriter, r *http.Request) {
 					rMin := int((durSec + 30) / 60)
 					_, _ = database.DB.ExecContext(ctx, "UPDATE titles SET runtime_min = ? WHERE id = ? AND (runtime_min = 0 OR runtime_min IS NULL)", rMin, tId)
 					if epId != "" {
-						_, _ = database.DB.ExecContext(ctx, "UPDATE episodes SET runtime = ? WHERE id = ? AND (runtime = 0 OR runtime IS NULL)", rMin, epId)
+						_, _ = database.DB.ExecContext(ctx, "UPDATE episodes SET runtime_min = ? WHERE id = ? AND (runtime_min = 0 OR runtime_min IS NULL)", rMin, epId)
 					}
 				}(videoID, epTitleID, probedDur)
 			}
