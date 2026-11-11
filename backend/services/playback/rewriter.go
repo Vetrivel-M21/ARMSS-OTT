@@ -234,7 +234,7 @@ func RewriteMasterPlaylist(rawContent []byte, videoID, tokenStr string, maxHeigh
 }
 
 // RewriteRenditionPlaylist rewrites segment URIs and init.mp4 into lightweight tokenized proxy URLs
-// (e.g. "segment/stream_0_00000.m4s?token=...").
+// (e.g. "{apiBaseURL}/videos/{videoID}/segment/stream_0_00000.m4s?token=..." or "segment/stream_0_00000.m4s?token=...").
 // This prevents inflating media playlists to 800 KB-1 MB+ for long videos, allowing Android ExoPlayer
 // and AVPlayer to parse the finite VOD playlist instantaneously with accurate duration and seeking.
 func RewriteRenditionPlaylist(
@@ -248,6 +248,7 @@ func RewriteRenditionPlaylist(
 ) (string, error) {
 	scanner := bufio.NewScanner(bytes.NewReader(rawContent))
 	var outLines []string
+	cleanBase := strings.TrimRight(apiBaseURL, "/")
 	escapedToken := url.QueryEscape(tokenStr)
 
 	for scanner.Scan() {
@@ -260,8 +261,13 @@ func RewriteRenditionPlaylist(
 		if strings.HasPrefix(line, "#EXT-X-MAP:") {
 			matches := mapUriRegex.FindStringSubmatch(line)
 			if len(matches) == 2 {
-				origUri := strings.TrimPrefix(matches[1], "/")
-				newUri := fmt.Sprintf("segment/%s?token=%s", origUri, escapedToken)
+				origUri := strings.TrimPrefix(strings.TrimPrefix(matches[1], "./"), "/")
+				var newUri string
+				if cleanBase != "" {
+					newUri = fmt.Sprintf("%s/videos/%s/segment/%s?token=%s", cleanBase, videoID, origUri, escapedToken)
+				} else {
+					newUri = fmt.Sprintf("segment/%s?token=%s", origUri, escapedToken)
+				}
 				line = mapUriRegex.ReplaceAllString(line, fmt.Sprintf(`URI="%s"`, newUri))
 			}
 			outLines = append(outLines, line)
@@ -271,7 +277,7 @@ func RewriteRenditionPlaylist(
 		// 2. Rewrite #EXT-X-KEY:METHOD=AES-128
 		if strings.HasPrefix(line, "#EXT-X-KEY:") {
 			if enableEncryption {
-				keyURL := fmt.Sprintf("%s/videos/%s/key?token=%s", strings.TrimRight(apiBaseURL, "/"), videoID, escapedToken)
+				keyURL := fmt.Sprintf("%s/videos/%s/key?token=%s", cleanBase, videoID, escapedToken)
 				line = keyUriRegex.ReplaceAllString(line, fmt.Sprintf(`URI="%s"`, keyURL))
 			}
 			outLines = append(outLines, line)
@@ -280,8 +286,14 @@ func RewriteRenditionPlaylist(
 
 		// 3. Rewrite media segment URI (ends with .m4s or .ts, not a comment/tag)
 		if !strings.HasPrefix(line, "#") && (strings.HasSuffix(line, ".m4s") || strings.HasSuffix(line, ".ts") || strings.HasSuffix(line, ".mp4")) {
-			cleanSeg := strings.TrimPrefix(line, "/")
-			outLines = append(outLines, fmt.Sprintf("segment/%s?token=%s", cleanSeg, escapedToken))
+			cleanSeg := strings.TrimPrefix(strings.TrimPrefix(line, "./"), "/")
+			var proxyURL string
+			if cleanBase != "" {
+				proxyURL = fmt.Sprintf("%s/videos/%s/segment/%s?token=%s", cleanBase, videoID, cleanSeg, escapedToken)
+			} else {
+				proxyURL = fmt.Sprintf("segment/%s?token=%s", cleanSeg, escapedToken)
+			}
+			outLines = append(outLines, proxyURL)
 			continue
 		}
 

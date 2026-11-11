@@ -154,22 +154,22 @@ stream_0_00002.m4s
 		t.Fatalf("unexpected error rewriting rendition: %v", err)
 	}
 
-	// 1. Verify init map rewritten to proxy
-	expectedMap := `URI="segment/init_0.mp4?token=playback-jwt-token-xyz"`
+	// 1. Verify init map rewritten to full proxy URL
+	expectedMap := `URI="http://localhost:8081/api/videos/vid-movie-1/segment/init_0.mp4?token=playback-jwt-token-xyz"`
 	if !strings.Contains(rewritten, expectedMap) {
 		t.Errorf("expected init map rewritten to %s, got:\n%s", expectedMap, rewritten)
 	}
 
-	// 2. Verify segments rewritten to short proxy path + token
-	if !strings.Contains(rewritten, "segment/stream_0_00000.m4s?token=playback-jwt-token-xyz") {
+	// 2. Verify segments rewritten to full proxy path + token
+	if !strings.Contains(rewritten, "http://localhost:8081/api/videos/vid-movie-1/segment/stream_0_00000.m4s?token=playback-jwt-token-xyz") {
 		t.Errorf("expected segment 0 to be rewritten with proxy path, got:\n%s", rewritten)
 	}
-	if !strings.Contains(rewritten, "segment/stream_0_00001.m4s?token=playback-jwt-token-xyz") {
+	if !strings.Contains(rewritten, "http://localhost:8081/api/videos/vid-movie-1/segment/stream_0_00001.m4s?token=playback-jwt-token-xyz") {
 		t.Errorf("expected segment 1 to be rewritten with proxy path, got:\n%s", rewritten)
 	}
 
 	// 3. Verify no raw S3 / presigned URLs present
-	if strings.Contains(rewritten, "X-Amz-") || strings.Contains(rewritten, "https://") {
+	if strings.Contains(rewritten, "X-Amz-") || strings.Contains(rewritten, "s3.") {
 		t.Errorf("expected no full presigned S3 URLs in media playlist, got:\n%s", rewritten)
 	}
 
@@ -179,6 +179,34 @@ stream_0_00002.m4s
 	}
 	if !strings.Contains(rewritten, "#EXT-X-ENDLIST") {
 		t.Errorf("expected #EXT-X-ENDLIST to be present")
+	}
+}
+
+func TestRewriteRenditionPlaylist_RelativeFallbackWhenNoBaseURL(t *testing.T) {
+	sampleRendition := `#EXTM3U
+#EXT-X-VERSION:7
+#EXT-X-TARGETDURATION:4
+#EXT-X-MAP:URI="init_0.mp4"
+#EXTINF:4.000000,
+stream_0_00000.m4s
+#EXT-X-ENDLIST
+`
+	token := "playback-jwt-token-xyz"
+	ctx := context.Background()
+
+	rewritten, err := RewriteRenditionPlaylist(ctx, []byte(sampleRendition), "vid-movie-1", nil, token, false, "")
+	if err != nil {
+		t.Fatalf("unexpected error rewriting rendition: %v", err)
+	}
+
+	expectedMap := `URI="segment/init_0.mp4?token=playback-jwt-token-xyz"`
+	if !strings.Contains(rewritten, expectedMap) {
+		t.Errorf("expected relative init map %s, got:\n%s", expectedMap, rewritten)
+	}
+
+	expectedSeg := "segment/stream_0_00000.m4s?token=playback-jwt-token-xyz"
+	if !strings.Contains(rewritten, expectedSeg) {
+		t.Errorf("expected relative segment %s, got:\n%s", expectedSeg, rewritten)
 	}
 }
 
@@ -201,9 +229,9 @@ func TestRewriteRenditionPlaylist_LongVideoSizeOptimization(t *testing.T) {
 
 	rewrittenSize := len(rewritten)
 	// For 1,800 segments with old long presigned URLs (~450 bytes each), the playlist was > 800 KB!
-	// With the new proxy URLs (~90 bytes each), it must easily stay well under 200 KB (target < 100 KB).
-	if rewrittenSize > 200*1024 {
-		t.Errorf("expected playlist size for 2h movie to be < 200 KB, got %d bytes (%.2f KB)", rewrittenSize, float64(rewrittenSize)/1024)
+	// With the new proxy URLs, it must easily stay well under 300 KB.
+	if rewrittenSize > 300*1024 {
+		t.Errorf("expected playlist size for 2h movie to be < 300 KB, got %d bytes (%.2f KB)", rewrittenSize, float64(rewrittenSize)/1024)
 	}
 
 	t.Logf("2-hour movie playlist size with segment proxy: %d bytes (%.2f KB)", rewrittenSize, float64(rewrittenSize)/1024)
