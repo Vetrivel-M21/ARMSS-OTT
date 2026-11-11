@@ -69,7 +69,7 @@ type masterParsedCache struct {
 
 // GeneratePlaybackToken generates a signed JWT token with configurable lifetime (defaults to 6h).
 func GeneratePlaybackToken(userID, videoID, deviceID, clientType string, maxHeight int, lifetime time.Duration) (string, error) {
-	if lifetime <= 0 {
+	if lifetime == 0 {
 		lifetime = GetPlaybackTokenTTL()
 	}
 
@@ -233,9 +233,10 @@ func RewriteMasterPlaylist(rawContent []byte, videoID, tokenStr string, maxHeigh
 	return sb.String()
 }
 
-// RewriteRenditionPlaylist rewrites segment URIs and init.mp4 into presigned S3 URLs.
-// Presigned URLs use GetPresignTTL() (configurable via PRESIGN_TTL, default 6 hours)
-// so full movies do not suffer segment download expiration mid-stream.
+// RewriteRenditionPlaylist rewrites segment URIs and init.mp4 into lightweight tokenized proxy URLs
+// (e.g. "segment/stream_0_00000.m4s?token=...").
+// This prevents inflating media playlists to 800 KB-1 MB+ for long videos, allowing Android ExoPlayer
+// and AVPlayer to parse the finite VOD playlist instantaneously with accurate duration and seeking.
 func RewriteRenditionPlaylist(
 	ctx context.Context,
 	rawContent []byte,
@@ -247,8 +248,7 @@ func RewriteRenditionPlaylist(
 ) (string, error) {
 	scanner := bufio.NewScanner(bytes.NewReader(rawContent))
 	var outLines []string
-	bucket := storageSvc.HLSBucket()
-	presignTTL := GetPresignTTL()
+	escapedToken := url.QueryEscape(tokenStr)
 
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
@@ -260,13 +260,9 @@ func RewriteRenditionPlaylist(
 		if strings.HasPrefix(line, "#EXT-X-MAP:") {
 			matches := mapUriRegex.FindStringSubmatch(line)
 			if len(matches) == 2 {
-				origUri := matches[1]
-				s3Key := fmt.Sprintf("videos/%s/%s", videoID, origUri)
-				presignedURL, err := storageSvc.GeneratePresignedGetURL(ctx, bucket, s3Key, presignTTL)
-				if err != nil {
-					return "", fmt.Errorf("presigning init map %s: %w", s3Key, err)
-				}
-				line = mapUriRegex.ReplaceAllString(line, fmt.Sprintf(`URI="%s"`, presignedURL))
+				origUri := strings.TrimPrefix(matches[1], "/")
+				newUri := fmt.Sprintf("segment/%s?token=%s", origUri, escapedToken)
+				line = mapUriRegex.ReplaceAllString(line, fmt.Sprintf(`URI="%s"`, newUri))
 			}
 			outLines = append(outLines, line)
 			continue
@@ -275,7 +271,7 @@ func RewriteRenditionPlaylist(
 		// 2. Rewrite #EXT-X-KEY:METHOD=AES-128
 		if strings.HasPrefix(line, "#EXT-X-KEY:") {
 			if enableEncryption {
-				keyURL := fmt.Sprintf("%s/videos/%s/key?token=%s", strings.TrimRight(apiBaseURL, "/"), videoID, url.QueryEscape(tokenStr))
+				keyURL := fmt.Sprintf("%s/videos/%s/key?token=%s", strings.TrimRight(apiBaseURL, "/"), videoID, escapedToken)
 				line = keyUriRegex.ReplaceAllString(line, fmt.Sprintf(`URI="%s"`, keyURL))
 			}
 			outLines = append(outLines, line)
@@ -284,12 +280,8 @@ func RewriteRenditionPlaylist(
 
 		// 3. Rewrite media segment URI (ends with .m4s or .ts, not a comment/tag)
 		if !strings.HasPrefix(line, "#") && (strings.HasSuffix(line, ".m4s") || strings.HasSuffix(line, ".ts") || strings.HasSuffix(line, ".mp4")) {
-			s3Key := fmt.Sprintf("videos/%s/%s", videoID, line)
-			presignedURL, err := storageSvc.GeneratePresignedGetURL(ctx, bucket, s3Key, presignTTL)
-			if err != nil {
-				return "", fmt.Errorf("presigning segment %s: %w", s3Key, err)
-			}
-			outLines = append(outLines, presignedURL)
+			cleanSeg := strings.TrimPrefix(line, "/")
+			outLines = append(outLines, fmt.Sprintf("segment/%s?token=%s", cleanSeg, escapedToken))
 			continue
 		}
 

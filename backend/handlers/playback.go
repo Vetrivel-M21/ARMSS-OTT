@@ -508,6 +508,53 @@ func GetRenditionPlaylist(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write([]byte(rewritten))
 }
 
+// GetSegmentProxy handles GET /videos/{id}/segment/{filename} (and /api/videos/{id}/segment/{filename}).
+// Validates the playback token, generates a short-lived presigned S3 GET URL, and returns an HTTP 302 Found redirect.
+func GetSegmentProxy(w http.ResponseWriter, r *http.Request) {
+	videoID := chi.URLParam(r, "id")
+	filename := chi.URLParam(r, "filename")
+	if videoID == "" || filename == "" {
+		http.Error(w, `{"error":"video id and filename are required"}`, http.StatusBadRequest)
+		return
+	}
+
+	// Sanitize filename to prevent directory traversal
+	filename = filepath.Base(filename)
+	if filename == "." || filename == "/" || strings.Contains(filename, "..") {
+		http.Error(w, `{"error":"invalid segment filename"}`, http.StatusBadRequest)
+		return
+	}
+
+	tokenStr := extractToken(r)
+	claims, err := playback.ValidatePlaybackToken(tokenStr)
+	if err != nil || claims.VideoID != videoID {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"error": "invalid or expired playback token",
+		})
+		return
+	}
+
+	storageSvc := storage.GetGlobalStorage()
+	if storageSvc == nil {
+		http.Error(w, `{"error":"storage unavailable"}`, http.StatusServiceUnavailable)
+		return
+	}
+
+	s3Key := fmt.Sprintf("videos/%s/%s", videoID, filename)
+	presignTTL := playback.GetPresignTTL()
+	presignedURL, err := storageSvc.GeneratePresignedGetURL(r.Context(), storageSvc.HLSBucket(), s3Key, presignTTL)
+	if err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":"failed generating segment url: %v"}`, err), http.StatusInternalServerError)
+		return
+	}
+
+	// 302 Found redirect to S3 presigned URL
+	w.Header().Set("Cache-Control", "private, max-age=300")
+	http.Redirect(w, r, presignedURL, http.StatusFound)
+}
+
 // SaveWatchProgress handles POST /api/videos/{id}/progress (and /videos/{id}/progress).
 // Saves watch progress position every 15s.
 func SaveWatchProgress(w http.ResponseWriter, r *http.Request) {
