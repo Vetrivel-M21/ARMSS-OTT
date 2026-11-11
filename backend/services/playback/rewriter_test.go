@@ -1,6 +1,8 @@
 package playback
 
 import (
+	"context"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -128,5 +130,82 @@ stream_0.m3u8
 	if !strings.Contains(rewritten, `URI="http://localhost:8081/api/videos/vid-999/subs_en.m3u8?token=tok-xyz"`) {
 		t.Errorf("expected rewritten Subtitles URI with token, got:\n%s", rewritten)
 	}
+}
+
+func TestRewriteRenditionPlaylist_RewritesSegmentsToProxyURI(t *testing.T) {
+	sampleRendition := `#EXTM3U
+#EXT-X-VERSION:7
+#EXT-X-TARGETDURATION:4
+#EXT-X-MEDIA-SEQUENCE:0
+#EXT-X-MAP:URI="init_0.mp4"
+#EXTINF:4.000000,
+stream_0_00000.m4s
+#EXTINF:4.000000,
+stream_0_00001.m4s
+#EXTINF:3.500000,
+stream_0_00002.m4s
+#EXT-X-ENDLIST
+`
+	token := "playback-jwt-token-xyz"
+	ctx := context.Background()
+
+	rewritten, err := RewriteRenditionPlaylist(ctx, []byte(sampleRendition), "vid-movie-1", nil, token, false, "http://localhost:8081/api")
+	if err != nil {
+		t.Fatalf("unexpected error rewriting rendition: %v", err)
+	}
+
+	// 1. Verify init map rewritten to proxy
+	expectedMap := `URI="segment/init_0.mp4?token=playback-jwt-token-xyz"`
+	if !strings.Contains(rewritten, expectedMap) {
+		t.Errorf("expected init map rewritten to %s, got:\n%s", expectedMap, rewritten)
+	}
+
+	// 2. Verify segments rewritten to short proxy path + token
+	if !strings.Contains(rewritten, "segment/stream_0_00000.m4s?token=playback-jwt-token-xyz") {
+		t.Errorf("expected segment 0 to be rewritten with proxy path, got:\n%s", rewritten)
+	}
+	if !strings.Contains(rewritten, "segment/stream_0_00001.m4s?token=playback-jwt-token-xyz") {
+		t.Errorf("expected segment 1 to be rewritten with proxy path, got:\n%s", rewritten)
+	}
+
+	// 3. Verify no raw S3 / presigned URLs present
+	if strings.Contains(rewritten, "X-Amz-") || strings.Contains(rewritten, "https://") {
+		t.Errorf("expected no full presigned S3 URLs in media playlist, got:\n%s", rewritten)
+	}
+
+	// 4. Verify VOD tags are present
+	if !strings.Contains(rewritten, "#EXT-X-PLAYLIST-TYPE:VOD") {
+		t.Errorf("expected #EXT-X-PLAYLIST-TYPE:VOD to be present")
+	}
+	if !strings.Contains(rewritten, "#EXT-X-ENDLIST") {
+		t.Errorf("expected #EXT-X-ENDLIST to be present")
+	}
+}
+
+func TestRewriteRenditionPlaylist_LongVideoSizeOptimization(t *testing.T) {
+	// Simulate 2-hour movie: 1,800 segments (4s each)
+	var sb strings.Builder
+	sb.WriteString("#EXTM3U\n#EXT-X-VERSION:7\n#EXT-X-TARGETDURATION:4\n#EXT-X-MAP:URI=\"init_0.mp4\"\n")
+	for i := 0; i < 1800; i++ {
+		sb.WriteString(fmt.Sprintf("#EXTINF:4.000000,\nstream_0_%05d.m4s\n", i))
+	}
+	sb.WriteString("#EXT-X-ENDLIST\n")
+
+	token := "jwt.sample.longtokenvalue1234567890abcdefghijklmnopqrstuvwxyz"
+	ctx := context.Background()
+
+	rewritten, err := RewriteRenditionPlaylist(ctx, []byte(sb.String()), "long-movie-999", nil, token, false, "http://localhost:8081/api")
+	if err != nil {
+		t.Fatalf("unexpected error rewriting long video rendition: %v", err)
+	}
+
+	rewrittenSize := len(rewritten)
+	// For 1,800 segments with old long presigned URLs (~450 bytes each), the playlist was > 800 KB!
+	// With the new proxy URLs (~90 bytes each), it must easily stay well under 200 KB (target < 100 KB).
+	if rewrittenSize > 200*1024 {
+		t.Errorf("expected playlist size for 2h movie to be < 200 KB, got %d bytes (%.2f KB)", rewrittenSize, float64(rewrittenSize)/1024)
+	}
+
+	t.Logf("2-hour movie playlist size with segment proxy: %d bytes (%.2f KB)", rewrittenSize, float64(rewrittenSize)/1024)
 }
 

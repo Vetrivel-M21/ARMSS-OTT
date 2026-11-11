@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 	"armss-ott-backend/middleware"
 	"armss-ott-backend/models"
 	"armss-ott-backend/services/playback"
+	"armss-ott-backend/services/storage"
 
 	"github.com/go-chi/chi/v5"
 	_ "modernc.org/sqlite"
@@ -40,7 +42,10 @@ func setupPlaybackTestDB(t *testing.T) *sql.DB {
 	CREATE TABLE IF NOT EXISTS titles (
 		id VARCHAR(100) PRIMARY KEY,
 		title VARCHAR(255) NOT NULL,
-		required_tier VARCHAR(50) NOT NULL DEFAULT 'free'
+		required_tier VARCHAR(50) NOT NULL DEFAULT 'free',
+		video_url VARCHAR(512) DEFAULT '',
+		trailer VARCHAR(512) DEFAULT '',
+		runtime_min INT DEFAULT 0
 	);
 
 	CREATE TABLE IF NOT EXISTS videos (
@@ -370,5 +375,104 @@ func TestSendStreamHeartbeat_Success(t *testing.T) {
 	err := db.QueryRow("SELECT COUNT(*) FROM playback_sessions WHERE session_id = 'sess-1234' AND user_id = 'u-heartbeat'").Scan(&count)
 	if err != nil || count != 1 {
 		t.Errorf("expected active session in database, found %d (err: %v)", count, err)
+	}
+}
+
+func TestGetSegmentProxy_MissingOrInvalidToken(t *testing.T) {
+	r := chi.NewRouter()
+	r.Get("/videos/{id}/segment/{filename}", GetSegmentProxy)
+
+	// 1. Missing token
+	req := httptest.NewRequest(http.MethodGet, "/videos/movie-1/segment/stream_0_00001.m4s", nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401 Unauthorized for missing token, got %d", rec.Code)
+	}
+
+	// 2. Invalid token
+	req2 := httptest.NewRequest(http.MethodGet, "/videos/movie-1/segment/stream_0_00001.m4s?token=invalid-garbage-token", nil)
+	rec2 := httptest.NewRecorder()
+	r.ServeHTTP(rec2, req2)
+
+	if rec2.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401 Unauthorized for garbage token, got %d", rec2.Code)
+	}
+}
+
+func TestGetSegmentProxy_VideoMismatch(t *testing.T) {
+	token, err := playback.GeneratePlaybackToken("u1", "other-video-99", "dev-1", "mobile", 1080, 1*time.Hour)
+	if err != nil {
+		t.Fatalf("failed generating token: %v", err)
+	}
+
+	r := chi.NewRouter()
+	r.Get("/videos/{id}/segment/{filename}", GetSegmentProxy)
+
+	req := httptest.NewRequest(http.MethodGet, "/videos/target-video-1/segment/stream_0_00001.m4s?token="+token, nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401 Unauthorized for video mismatch, got %d", rec.Code)
+	}
+}
+
+func TestGetSegmentProxy_ValidTokenRedirects302(t *testing.T) {
+	// Initialize local offline storage client
+	storageSvc, err := storage.NewService(storage.Config{
+		Endpoint:      "http://127.0.0.1:9000",
+		AccessKey:     "dummyAccess",
+		SecretKey:     "dummySecretKey12345678",
+		Region:        "us-east-1",
+		MastersBucket: "masters",
+		HLSBucket:     "hls",
+		UsePathStyle:  true,
+	})
+	if err != nil {
+		t.Fatalf("failed creating mock storage service: %v", err)
+	}
+	storage.SetGlobalStorage(storageSvc)
+
+	videoID := "vid-test-proxy-1"
+	token, err := playback.GeneratePlaybackToken("u-valid", videoID, "dev-test", "mobile", 1080, 2*time.Hour)
+	if err != nil {
+		t.Fatalf("failed generating token: %v", err)
+	}
+
+	r := chi.NewRouter()
+	r.Get("/videos/{id}/segment/{filename}", GetSegmentProxy)
+
+	// Test segment redirect
+	req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/videos/%s/segment/stream_0_00005.m4s?token=%s", videoID, token), nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusFound {
+		t.Fatalf("expected 302 Found redirect, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	location := rec.Header().Get("Location")
+	if location == "" {
+		t.Fatalf("expected Location header in 302 response, got empty")
+	}
+
+	if !strings.Contains(location, "videos/vid-test-proxy-1/stream_0_00005.m4s") {
+		t.Errorf("expected redirect Location to target segment key, got %s", location)
+	}
+
+	// Test init.mp4 redirect
+	reqInit := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/videos/%s/segment/init_0.mp4?token=%s", videoID, token), nil)
+	recInit := httptest.NewRecorder()
+	r.ServeHTTP(recInit, reqInit)
+
+	if recInit.Code != http.StatusFound {
+		t.Fatalf("expected 302 Found for init map, got %d", recInit.Code)
+	}
+
+	locInit := recInit.Header().Get("Location")
+	if !strings.Contains(locInit, "videos/vid-test-proxy-1/init_0.mp4") {
+		t.Errorf("expected redirect Location for init map to target init_0.mp4, got %s", locInit)
 	}
 }
