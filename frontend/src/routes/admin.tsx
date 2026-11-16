@@ -1513,7 +1513,11 @@ function ContentTab() {
   const load = async () => {
     setLoading(true);
     const data = await api.admin.getTitles();
-    setTitles(data.titles || []);
+    if (!data.error) {
+      setTitles(data.titles || []);
+    } else {
+      toast.error("Unable to load latest catalogue from server. Retaining cached data.");
+    }
     setLoading(false);
   };
 
@@ -3775,7 +3779,7 @@ function PlansAccessTab() {
   const loadTitles = async () => {
     try {
       const res = await api.admin.getTitles();
-      if (res && res.titles) {
+      if (res && res.titles && !res.error) {
         setTitles(res.titles);
         // Initialize access state from titles
         const map: Record<string, { tier: string; freeEps: number }> = {};

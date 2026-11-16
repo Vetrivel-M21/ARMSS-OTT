@@ -13,7 +13,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-func setupTestDB(t *testing.T) {
+func setupVersionTestDB(t *testing.T) {
 	db, err := sql.Open("sqlite", ":memory:")
 	if err != nil {
 		t.Fatalf("failed to open in-memory sqlite: %v", err)
@@ -35,7 +35,7 @@ func setupTestDB(t *testing.T) {
 }
 
 func TestGetAppVersion_Default(t *testing.T) {
-	setupTestDB(t)
+	setupVersionTestDB(t)
 
 	req := httptest.NewRequest("GET", "/api/app/version", nil)
 	rr := httptest.NewRecorder()
@@ -66,7 +66,7 @@ func TestGetAppVersion_Default(t *testing.T) {
 }
 
 func TestGetAppVersion_Evaluation(t *testing.T) {
-	setupTestDB(t)
+	setupVersionTestDB(t)
 
 	cfg := AppVersionConfig{
 		LatestVersion:     "1.2.0",
@@ -129,7 +129,7 @@ func TestGetAppVersion_Evaluation(t *testing.T) {
 }
 
 func TestAdminUpdateAppVersion(t *testing.T) {
-	setupTestDB(t)
+	setupVersionTestDB(t)
 
 	payload := `{
 		"latest_version": "2.0.0",

@@ -347,6 +347,10 @@ export const useAether = create<AetherState>()(
       fetchCatalog: async () => {
         try {
           const titles = await api.getTitles();
+          if (titles === null) {
+            console.warn("[ARMSS-OTT] Retaining cached catalog due to API fetch error.");
+            return;
+          }
           if (Array.isArray(titles)) {
             syncBackendTitles(titles);
             const currentIds = new Set(titles.map((t: any) => t.id));

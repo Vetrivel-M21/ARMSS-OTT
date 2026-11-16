@@ -137,10 +137,14 @@ func AdminBanUser(w http.ResponseWriter, r *http.Request) {
 
 // AdminListTitles — GET /api/admin/titles
 func AdminListTitles(w http.ResponseWriter, r *http.Request) {
-	rows, err := database.DB.Query(`SELECT id, title, kind, year, maturity, runtime_min, match_percent, logline, synopsis, poster, backdrop, trailer, tone, original, kids, required_tier, genres, badges FROM titles ORDER BY title`)
+	rows, err := database.DB.Query(`SELECT id, title, kind, year, maturity, runtime_min, match_percent, logline, synopsis, poster, backdrop, trailer, video_url, tone, original, kids, required_tier, genres, badges FROM titles ORDER BY title`)
 	if err != nil {
-		http.Error(w, `{"error":"database error"}`, http.StatusInternalServerError)
-		return
+		// Fallback for older database before video_url migration
+		rows, err = database.DB.Query(`SELECT id, title, kind, year, maturity, runtime_min, match_percent, logline, synopsis, poster, backdrop, trailer, tone, original, kids, required_tier, genres, badges FROM titles ORDER BY title`)
+		if err != nil {
+			http.Error(w, `{"error":"database error"}`, http.StatusInternalServerError)
+			return
+		}
 	}
 	defer rows.Close()
 
@@ -148,10 +152,18 @@ func AdminListTitles(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var t models.Title
 		var genresStr, badgesStr string
-		var trailer sql.NullString
-		_ = rows.Scan(&t.ID, &t.Title, &t.Kind, &t.Year, &t.Maturity, &t.RuntimeMin, &t.Match, &t.Logline, &t.Synopsis, &t.Poster, &t.Backdrop, &trailer, &t.Tone, &t.Original, &t.Kids, &t.RequiredTier, &genresStr, &badgesStr)
+		var trailer, videoURL sql.NullString
+		cols, _ := rows.Columns()
+		if len(cols) >= 19 {
+			_ = rows.Scan(&t.ID, &t.Title, &t.Kind, &t.Year, &t.Maturity, &t.RuntimeMin, &t.Match, &t.Logline, &t.Synopsis, &t.Poster, &t.Backdrop, &trailer, &videoURL, &t.Tone, &t.Original, &t.Kids, &t.RequiredTier, &genresStr, &badgesStr)
+		} else {
+			_ = rows.Scan(&t.ID, &t.Title, &t.Kind, &t.Year, &t.Maturity, &t.RuntimeMin, &t.Match, &t.Logline, &t.Synopsis, &t.Poster, &t.Backdrop, &trailer, &t.Tone, &t.Original, &t.Kids, &t.RequiredTier, &genresStr, &badgesStr)
+		}
 		if trailer.Valid {
 			t.Trailer = trailer.String
+		}
+		if videoURL.Valid {
+			t.VideoURL = videoURL.String
 		}
 		if genresStr != "" {
 			t.Genres = strings.Split(genresStr, ",")
@@ -174,27 +186,40 @@ func AdminGetTitle(w http.ResponseWriter, r *http.Request) {
 	titleID := chi.URLParam(r, "id")
 	var t models.Title
 	var genresStr, badgesStr string
-	var trailer sql.NullString
+	var trailer, videoURL sql.NullString
 
 	err := database.DB.QueryRow(
-		`SELECT id, title, kind, year, maturity, runtime_min, match_percent, logline, synopsis, poster, backdrop, trailer, tone, original, kids, required_tier, genres, badges
+		`SELECT id, title, kind, year, maturity, runtime_min, match_percent, logline, synopsis, poster, backdrop, trailer, video_url, tone, original, kids, required_tier, genres, badges
 		 FROM titles WHERE id = ?`,
 		titleID,
 	).Scan(
-		&t.ID, &t.Title, &t.Kind, &t.Year, &t.Maturity, &t.RuntimeMin, &t.Match, &t.Logline, &t.Synopsis, &t.Poster, &t.Backdrop, &trailer, &t.Tone, &t.Original, &t.Kids, &t.RequiredTier, &genresStr, &badgesStr,
+		&t.ID, &t.Title, &t.Kind, &t.Year, &t.Maturity, &t.RuntimeMin, &t.Match, &t.Logline, &t.Synopsis, &t.Poster, &t.Backdrop, &trailer, &videoURL, &t.Tone, &t.Original, &t.Kids, &t.RequiredTier, &genresStr, &badgesStr,
 	)
 
 	if err != nil {
-		if err == sql.ErrNoRows {
-			http.Error(w, `{"error":"title not found"}`, http.StatusNotFound)
+		// Fallback without video_url
+		err = database.DB.QueryRow(
+			`SELECT id, title, kind, year, maturity, runtime_min, match_percent, logline, synopsis, poster, backdrop, trailer, tone, original, kids, required_tier, genres, badges
+			 FROM titles WHERE id = ?`,
+			titleID,
+		).Scan(
+			&t.ID, &t.Title, &t.Kind, &t.Year, &t.Maturity, &t.RuntimeMin, &t.Match, &t.Logline, &t.Synopsis, &t.Poster, &t.Backdrop, &trailer, &t.Tone, &t.Original, &t.Kids, &t.RequiredTier, &genresStr, &badgesStr,
+		)
+		if err != nil {
+			if err == sql.ErrNoRows {
+				http.Error(w, `{"error":"title not found"}`, http.StatusNotFound)
+				return
+			}
+			http.Error(w, `{"error":"database error"}`, http.StatusInternalServerError)
 			return
 		}
-		http.Error(w, `{"error":"database error"}`, http.StatusInternalServerError)
-		return
 	}
 
 	if trailer.Valid {
 		t.Trailer = trailer.String
+	}
+	if videoURL.Valid {
+		t.VideoURL = videoURL.String
 	}
 	if genresStr != "" {
 		t.Genres = strings.Split(genresStr, ",")

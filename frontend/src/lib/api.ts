@@ -396,14 +396,18 @@ export const api = {
   },
 
   // Public Catalog
-  async getTitles(): Promise<any[]> {
+  async getTitles(): Promise<any[] | null> {
     try {
       const res = await fetchWithAuth("/titles");
-      if (!res.ok) return [];
+      if (!res.ok) {
+        console.warn(`[ARMSS-OTT] /titles returned status ${res.status}`);
+        return null;
+      }
       const data = await res.json();
-      return data.titles || [];
-    } catch {
-      return [];
+      return Array.isArray(data.titles) ? data.titles : [];
+    } catch (err) {
+      console.warn("[ARMSS-OTT] /titles fetch failed:", err);
+      return null;
     }
   },
 
@@ -758,13 +762,17 @@ export const api = {
       }
     },
 
-    async getTitles(): Promise<{ titles: any[]; count: number }> {
+    async getTitles(): Promise<{ titles: any[]; count: number; error?: boolean }> {
       try {
         const res = await fetchWithAuth("/admin/titles");
-        if (!res.ok) return { titles: [], count: 0 };
+        if (!res.ok) {
+          console.warn(`[ARMSS-OTT] /admin/titles returned status ${res.status}`);
+          return { titles: [], count: 0, error: true };
+        }
         return await res.json();
-      } catch {
-        return { titles: [], count: 0 };
+      } catch (err) {
+        console.warn("[ARMSS-OTT] /admin/titles fetch failed:", err);
+        return { titles: [], count: 0, error: true };
       }
     },
 

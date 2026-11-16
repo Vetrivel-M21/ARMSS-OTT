@@ -37,19 +37,36 @@ func InitDB() (*sql.DB, error) {
 	if err == nil {
 		db.SetMaxOpenConns(25)
 		db.SetMaxIdleConns(10)
+		db.SetConnMaxLifetime(5 * time.Minute)
+		db.SetConnMaxIdleTime(2 * time.Minute)
 
-		if pingErr := db.Ping(); pingErr == nil {
-			log.Println("[ARMSS-OTT] ✓ MySQL connected successfully!")
-			DB = db
-			DriverName = "mysql"
-			if initErr := createTables("mysql"); initErr != nil {
-				return nil, fmt.Errorf("failed creating MySQL tables: %w", initErr)
-			}
-			return DB, nil
-		} else {
-			log.Printf("[ARMSS-OTT] Notice: MySQL ping failed (%v). Falling back to embedded SQLite database...", pingErr)
-			_ = db.Close()
+		maxRetries := 1
+		retryInterval := 2 * time.Second
+		// When running with explicit MySQL host (e.g. Docker container 'mysql' or remote server), retry with backoff
+		if os.Getenv("MYSQL_HOST") != "" || os.Getenv("MYSQL_DSN") != "" {
+			maxRetries = 15 // up to 30s total
 		}
+
+		var pingErr error
+		for attempt := 1; attempt <= maxRetries; attempt++ {
+			pingErr = db.Ping()
+			if pingErr == nil {
+				log.Printf("[ARMSS-OTT] ✓ MySQL connected successfully! (attempt %d/%d)", attempt, maxRetries)
+				DB = db
+				DriverName = "mysql"
+				if initErr := createTables("mysql"); initErr != nil {
+					return nil, fmt.Errorf("failed creating MySQL tables: %w", initErr)
+				}
+				return DB, nil
+			}
+			if attempt < maxRetries {
+				log.Printf("[ARMSS-OTT] MySQL connection attempt %d/%d failed (%v). Retrying in %v...", attempt, maxRetries, pingErr, retryInterval)
+				time.Sleep(retryInterval)
+			}
+		}
+
+		log.Printf("[ARMSS-OTT] Notice: MySQL ping failed after %d attempts (%v). Falling back to embedded SQLite database...", maxRetries, pingErr)
+		_ = db.Close()
 	} else {
 		log.Printf("[ARMSS-OTT] Notice: MySQL open failed (%v). Falling back to embedded SQLite database...", err)
 	}
@@ -65,6 +82,8 @@ func InitDB() (*sql.DB, error) {
 	}
 
 	sdb.SetMaxOpenConns(1) // SQLite single-writer safe pool
+	sdb.SetConnMaxLifetime(10 * time.Minute)
+	sdb.SetConnMaxIdleTime(5 * time.Minute)
 
 	if pingErr := sdb.Ping(); pingErr != nil {
 		_ = sdb.Close()
