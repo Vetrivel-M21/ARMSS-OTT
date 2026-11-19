@@ -389,14 +389,7 @@ class _NativeVideoPlayerScreenState extends ConsumerState<NativeVideoPlayerScree
         setState(() {
           _isLoading = false;
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Quality stream unavailable. Continuing current stream.'),
-            backgroundColor: AppColors.surfaceElevated,
-            duration: const Duration(seconds: 3),
-          ),
-        );
-        return;
+        rethrow;
       }
       setState(() {
         _isLoading = false;
@@ -536,7 +529,20 @@ class _NativeVideoPlayerScreenState extends ConsumerState<NativeVideoPlayerScree
     final ticket = _playbackTicket;
     if (ticket == null) return;
 
-    final targetUrl = (quality == 'Auto') ? ticket.autoUrl : ticket.getRenditionUrl(quality);
+    if (!ticket.hasHLS && quality != 'Auto' && quality != 'Auto (Original)') {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('This title is streamed in original quality.'),
+          backgroundColor: AppColors.surfaceElevated,
+          duration: Duration(seconds: 2),
+        ),
+      );
+      return;
+    }
+
+    final targetUrl = (quality == 'Auto' || quality == 'Auto (Original)')
+        ? ticket.autoUrl
+        : ticket.getRenditionUrl(quality);
     final previousQuality = _selectedQuality;
 
     setState(() {
@@ -562,7 +568,10 @@ class _NativeVideoPlayerScreenState extends ConsumerState<NativeVideoPlayerScree
 
   void _showQualitySheet() {
     final ticket = _playbackTicket;
-    final rungs = ['Auto', if (ticket != null) ...ticket.availableRenditions else ...['1080p', '720p', '480p', '360p', '240p', '144p']];
+    final hasHls = ticket?.hasHLS ?? false;
+    final rungs = hasHls
+        ? ['Auto', if (ticket != null) ...ticket.availableRenditions else ...['1080p', '720p', '480p', '360p', '240p', '144p']]
+        : ['Auto (Original)'];
 
     showModalBottomSheet(
       context: context,

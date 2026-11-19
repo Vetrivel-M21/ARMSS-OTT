@@ -44,11 +44,15 @@ class PlaybackTicket {
     );
   }
 
+  /// Whether this ticket uses HLS multi-bitrate streaming
+  bool get hasHLS => manifestUrl.contains('.m3u8');
+
   /// Resolved absolute URL for Master playlist (ABR Auto)
   String get autoUrl => ApiConstants.resolveMediaUrl(manifestUrl);
 
   /// Resolved absolute URL for a specific rendition (e.g. 1080p, 720p, 480p, 360p, 240p, 144p)
   String getRenditionUrl(String rendition) {
+    if (!hasHLS) return autoUrl;
     final t = token;
     final tokenSuffix = (t != null && t.isNotEmpty) ? '?token=$t' : '';
     final clean = rendition.replaceAll('.m3u8', '').replaceAll('/index', '');
@@ -58,6 +62,7 @@ class PlaybackTicket {
 
   /// Available ladder rungs capped at maxHeight (1080p on mobile)
   List<String> get availableRenditions {
+    if (!hasHLS) return const [];
     const allRungs = ['1080p', '720p', '480p', '360p', '240p', '144p'];
     return allRungs.where((r) {
       final height = int.tryParse(r.replaceAll('p', '')) ?? 0;

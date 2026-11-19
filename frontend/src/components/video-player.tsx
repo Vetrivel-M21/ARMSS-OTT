@@ -70,6 +70,8 @@ export function VideoPlayer({
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const hlsRef = useRef<Hls | null>(null);
+  const masterUrlRef = useRef<string>("");
+  const availableLevelsRef = useRef<Level[]>([]);
 
   const sessionIdRef = useRef<string>(crypto.randomUUID());
   const deviceIdRef = useRef<string>(
@@ -214,7 +216,7 @@ export function VideoPlayer({
         // Hls.js supported path
         if (Hls.isSupported()) {
           const hlsConfig: Partial<HlsConfig> = {
-            capLevelToPlayerSize: true, // Cap rung to player display size
+            capLevelToPlayerSize: false, // Allow user-selected high resolution regardless of player window size
             startLevel: 0, // Fast start: download lowest rung for sub-300ms instant first frame
             maxBufferLength: 20, // 20s forward buffer
             maxMaxBufferLength: 40, // 40s max forward buffer
@@ -230,6 +232,7 @@ export function VideoPlayer({
 
           const hls = new Hls(hlsConfig);
           hlsRef.current = hls;
+          masterUrlRef.current = manifestUrl;
 
           hls.loadSource(manifestUrl);
           hls.attachMedia(video);
@@ -237,6 +240,7 @@ export function VideoPlayer({
           hls.on(Hls.Events.MANIFEST_PARSED, (_, data) => {
             if (isCancelled) return;
             setLevels(data.levels);
+            availableLevelsRef.current = data.levels;
             setIsLoading(false);
 
             // Fast-start: start on level 0, then immediately let ABR step up smoothly
@@ -517,11 +521,60 @@ export function VideoPlayer({
   };
 
   const handleQualitySelect = (levelIndex: number) => {
-    if (!hlsRef.current) return;
-    hlsRef.current.currentLevel = levelIndex;
-    hlsRef.current.nextLevel = levelIndex;
-    hlsRef.current.loadLevel = levelIndex;
+    if (!hlsRef.current || !videoRef.current) return;
+    const hls = hlsRef.current;
+    const video = videoRef.current;
+    const curTime = video.currentTime;
+    const wasPlaying = !video.paused;
+
     setCurrentLevel(levelIndex);
+
+    const activeLevels = availableLevelsRef.current.length > 0
+      ? availableLevelsRef.current
+      : levels;
+
+    if (levelIndex === -1) {
+      // Auto (Adaptive ABR): reload master playlist with full ladder
+      hls.currentLevel = -1;
+      if (masterUrlRef.current && hls.url !== masterUrlRef.current) {
+        hls.loadSource(masterUrlRef.current);
+      }
+    } else {
+      const targetLevel = activeLevels[levelIndex];
+      if (targetLevel) {
+        const renditionUrl = (targetLevel.url && targetLevel.url[0]) ? targetLevel.url[0] : "";
+        if (renditionUrl) {
+          // Direct variant loading immediately flushes buffer and loads the exact rendition!
+          hls.loadSource(renditionUrl);
+        } else {
+          hls.currentLevel = levelIndex;
+        }
+      }
+    }
+
+    // Seamlessly restore playback time without stutter
+    const restoreTime = () => {
+      try {
+        if (curTime > 0) {
+          video.currentTime = curTime;
+        }
+        if (wasPlaying) {
+          video.play().catch(() => {});
+        }
+      } catch (_) {}
+    };
+
+    hls.once(Hls.Events.LEVEL_LOADED, restoreTime);
+
+    // Immediate micro-nudge for video decoder if paused or playing
+    try {
+      if (curTime > 0.01) {
+        video.currentTime = curTime - 0.001;
+      } else if (video.duration > 0.1) {
+        video.currentTime = curTime + 0.005;
+      }
+    } catch (_) {}
+
     setActiveMenu(null);
     resetControlsTimer();
   };
@@ -756,7 +809,7 @@ export function VideoPlayer({
                 <span>
                   {currentLevel === -1
                     ? `Auto ${autoLevelResolution ? `(${autoLevelResolution})` : ""}`
-                    : `${levels[currentLevel]?.height || 1080}p`}
+                    : `${(availableLevelsRef.current[currentLevel] || levels[currentLevel])?.height || 1080}p`}
                 </span>
               </button>
 
@@ -776,6 +829,11 @@ export function VideoPlayer({
                     {currentLevel === -1 && <Check className="w-3.5 h-3.5" />}
                   </button>
 
+                  {filteredLevels.length === 0 && (
+                    <div className="px-2.5 py-1.5 text-zinc-400 italic">
+                      Original Quality
+                    </div>
+                  )}
                   {filteredLevels.map((lvl) => {
                     const originalIdx = levels.indexOf(lvl);
                     return (

@@ -362,7 +362,7 @@ func GetPlaybackTicket(w http.ResponseWriter, r *http.Request) {
 
 	manifestURL := fmt.Sprintf("/api/videos/%s/master.m3u8?token=%s", videoID, playbackToken)
 
-	// Check if S3 CMAF transcoded master.m3u8 actually exists in storage
+	// Check if S3 CMAF transcoded master.m3u8 actually exists in storage or locally
 	storageSvc := storage.GetGlobalStorage()
 	hasHLS := false
 	if storageSvc != nil {
@@ -370,6 +370,20 @@ func GetPlaybackTicket(w http.ResponseWriter, r *http.Request) {
 		exists, checkErr := storageSvc.ObjectExists(r.Context(), storageSvc.HLSBucket(), masterKey)
 		if checkErr == nil && exists {
 			hasHLS = true
+		}
+	}
+
+	if !hasHLS {
+		for _, p := range []string{
+			filepath.Join("data", "hls", videoID, "master.m3u8"),
+			filepath.Join("public", "uploads", "videos", videoID, "master.m3u8"),
+			filepath.Join("public", "uploads", videoID, "master.m3u8"),
+			filepath.Join("public", "hls", videoID, "master.m3u8"),
+		} {
+			if _, statErr := os.Stat(p); statErr == nil {
+				hasHLS = true
+				break
+			}
 		}
 	}
 
@@ -416,14 +430,31 @@ func GetMasterPlaylist(w http.ResponseWriter, r *http.Request) {
 	}
 
 	storageSvc := storage.GetGlobalStorage()
-	if storageSvc == nil {
-		http.Error(w, `{"error":"storage unavailable"}`, http.StatusServiceUnavailable)
-		return
+	var rawBytes []byte
+	var err error
+
+	if storageSvc != nil {
+		masterKey := fmt.Sprintf("videos/%s/master.m3u8", videoID)
+		rawBytes, err = storageSvc.FetchObjectBytes(r.Context(), storageSvc.HLSBucket(), masterKey)
 	}
 
-	masterKey := fmt.Sprintf("videos/%s/master.m3u8", videoID)
-	rawBytes, err := storageSvc.FetchObjectBytes(r.Context(), storageSvc.HLSBucket(), masterKey)
-	if err != nil {
+	// Local filesystem fallback
+	if len(rawBytes) == 0 {
+		for _, p := range []string{
+			filepath.Join("data", "hls", videoID, "master.m3u8"),
+			filepath.Join("public", "uploads", "videos", videoID, "master.m3u8"),
+			filepath.Join("public", "uploads", videoID, "master.m3u8"),
+			filepath.Join("public", "hls", videoID, "master.m3u8"),
+		} {
+			if b, readErr := os.ReadFile(p); readErr == nil && len(b) > 0 {
+				rawBytes = b
+				err = nil
+				break
+			}
+		}
+	}
+
+	if len(rawBytes) == 0 {
 		http.Error(w, `{"error":"master playlist not found"}`, http.StatusNotFound)
 		return
 	}
@@ -475,10 +506,6 @@ func GetRenditionPlaylist(w http.ResponseWriter, r *http.Request) {
 	}
 
 	storageSvc := storage.GetGlobalStorage()
-	if storageSvc == nil {
-		http.Error(w, `{"error":"storage unavailable"}`, http.StatusServiceUnavailable)
-		return
-	}
 
 	// Normalize rendition filename
 	cleanRendition := strings.TrimPrefix(rendition, "./")
@@ -488,23 +515,71 @@ func GetRenditionPlaylist(w http.ResponseWriter, r *http.Request) {
 		cleanRendition += ".m3u8"
 	}
 
-	// 1. Try direct rendition key (e.g. stream_0.m3u8 or 1080p.m3u8)
-	playlistKey := fmt.Sprintf("videos/%s/%s", videoID, cleanRendition)
-	rawBytes, err := storageSvc.FetchObjectBytes(r.Context(), storageSvc.HLSBucket(), playlistKey)
-	if err != nil {
-		// 2. If direct key not found, attempt resolution via master.m3u8 (e.g. 1080p -> stream_1.m3u8)
-		masterKey := fmt.Sprintf("videos/%s/master.m3u8", videoID)
-		masterBytes, masterErr := storageSvc.FetchObjectBytes(r.Context(), storageSvc.HLSBucket(), masterKey)
-		if masterErr == nil {
-			mappedName := playback.ResolveRenditionFilename(masterBytes, videoID, cleanRendition)
-			if mappedName != "" && mappedName != cleanRendition {
-				mappedKey := fmt.Sprintf("videos/%s/%s", videoID, mappedName)
-				rawBytes, err = storageSvc.FetchObjectBytes(r.Context(), storageSvc.HLSBucket(), mappedKey)
+	var rawBytes []byte
+
+	// 1. Try S3 storage if available
+	if storageSvc != nil {
+		playlistKey := fmt.Sprintf("videos/%s/%s", videoID, cleanRendition)
+		rawBytes, err = storageSvc.FetchObjectBytes(r.Context(), storageSvc.HLSBucket(), playlistKey)
+		if err != nil {
+			masterKey := fmt.Sprintf("videos/%s/master.m3u8", videoID)
+			masterBytes, masterErr := storageSvc.FetchObjectBytes(r.Context(), storageSvc.HLSBucket(), masterKey)
+			if masterErr == nil {
+				mappedName := playback.ResolveRenditionFilename(masterBytes, videoID, cleanRendition)
+				if mappedName != "" {
+					mappedKey := fmt.Sprintf("videos/%s/%s", videoID, mappedName)
+					rawBytes, err = storageSvc.FetchObjectBytes(r.Context(), storageSvc.HLSBucket(), mappedKey)
+				}
 			}
 		}
 	}
 
-	if err != nil {
+	// 2. Local filesystem fallback if S3 is unavailable or file not found
+	if len(rawBytes) == 0 {
+		for _, p := range []string{
+			filepath.Join("data", "hls", videoID, cleanRendition),
+			filepath.Join("public", "uploads", "videos", videoID, cleanRendition),
+			filepath.Join("public", "uploads", videoID, cleanRendition),
+			filepath.Join("public", "hls", videoID, cleanRendition),
+		} {
+			if b, readErr := os.ReadFile(p); readErr == nil && len(b) > 0 {
+				rawBytes = b
+				err = nil
+				break
+			}
+		}
+
+		if len(rawBytes) == 0 {
+			// Resolve rendition mapping via local master.m3u8
+			for _, p := range []string{
+				filepath.Join("data", "hls", videoID, "master.m3u8"),
+				filepath.Join("public", "uploads", "videos", videoID, "master.m3u8"),
+				filepath.Join("public", "uploads", videoID, "master.m3u8"),
+				filepath.Join("public", "hls", videoID, "master.m3u8"),
+			} {
+				if mb, readErr := os.ReadFile(p); readErr == nil && len(mb) > 0 {
+					mappedName := playback.ResolveRenditionFilename(mb, videoID, cleanRendition)
+					if mappedName != "" {
+						for _, mp := range []string{
+							filepath.Join("data", "hls", videoID, mappedName),
+							filepath.Join("public", "uploads", "videos", videoID, mappedName),
+							filepath.Join("public", "uploads", videoID, mappedName),
+							filepath.Join("public", "hls", videoID, mappedName),
+						} {
+							if b, rErr := os.ReadFile(mp); rErr == nil && len(b) > 0 {
+								rawBytes = b
+								err = nil
+								break
+							}
+						}
+					}
+					break
+				}
+			}
+		}
+	}
+
+	if len(rawBytes) == 0 {
 		http.Error(w, `{"error":"rendition playlist not found"}`, http.StatusNotFound)
 		return
 	}
@@ -560,22 +635,32 @@ func GetSegmentProxy(w http.ResponseWriter, r *http.Request) {
 	}
 
 	storageSvc := storage.GetGlobalStorage()
-	if storageSvc == nil {
-		http.Error(w, `{"error":"storage unavailable"}`, http.StatusServiceUnavailable)
-		return
+	if storageSvc != nil {
+		s3Key := fmt.Sprintf("videos/%s/%s", videoID, filename)
+		presignTTL := playback.GetPresignTTL()
+		presignedURL, err := storageSvc.GeneratePresignedGetURL(r.Context(), storageSvc.HLSBucket(), s3Key, presignTTL)
+		if err == nil && presignedURL != "" {
+			w.Header().Set("Cache-Control", "private, max-age=300")
+			http.Redirect(w, r, presignedURL, http.StatusFound)
+			return
+		}
 	}
 
-	s3Key := fmt.Sprintf("videos/%s/%s", videoID, filename)
-	presignTTL := playback.GetPresignTTL()
-	presignedURL, err := storageSvc.GeneratePresignedGetURL(r.Context(), storageSvc.HLSBucket(), s3Key, presignTTL)
-	if err != nil {
-		http.Error(w, fmt.Sprintf(`{"error":"failed generating segment url: %v"}`, err), http.StatusInternalServerError)
-		return
+	// Local filesystem fallback
+	for _, p := range []string{
+		filepath.Join("data", "hls", videoID, filename),
+		filepath.Join("public", "uploads", "videos", videoID, filename),
+		filepath.Join("public", "uploads", videoID, filename),
+		filepath.Join("public", "hls", videoID, filename),
+	} {
+		if fi, statErr := os.Stat(p); statErr == nil && !fi.IsDir() {
+			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+			http.ServeFile(w, r, p)
+			return
+		}
 	}
 
-	// 302 Found redirect to S3 presigned URL
-	w.Header().Set("Cache-Control", "private, max-age=300")
-	http.Redirect(w, r, presignedURL, http.StatusFound)
+	http.Error(w, `{"error":"segment not found"}`, http.StatusNotFound)
 }
 
 // SaveWatchProgress handles POST /api/videos/{id}/progress (and /videos/{id}/progress).
