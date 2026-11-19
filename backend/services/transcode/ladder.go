@@ -76,6 +76,28 @@ var StandardABRLadder = []LadderRung{
 		Profile:      "baseline",
 		Level:        "3.0",
 	},
+	{
+		Name:         "240p",
+		Width:        426,
+		Height:       240,
+		VideoBitrate: 400000, // ~0.4 Mbps
+		MaxRate:      440000,
+		BufSize:      600000,
+		AudioBitrate: 96000,
+		Profile:      "baseline",
+		Level:        "3.0",
+	},
+	{
+		Name:         "144p",
+		Width:        256,
+		Height:       144,
+		VideoBitrate: 200000, // ~0.2 Mbps
+		MaxRate:      220000,
+		BufSize:      300000,
+		AudioBitrate: 64000,
+		Profile:      "baseline",
+		Level:        "3.0",
+	},
 }
 
 // VideoMetadata contains probed metadata for a video.
@@ -97,7 +119,7 @@ func FilterLadder(meta VideoMetadata) []LadderRung {
 		eligible = append(eligible, rung)
 	}
 
-	// If source is smaller than even the lowest ladder rung (360p), keep at least 360p scaled down
+	// If source is smaller than even the lowest ladder rung (144p), keep at least 144p scaled down
 	if len(eligible) == 0 {
 		lowest := StandardABRLadder[len(StandardABRLadder)-1]
 		lowest.Width = meta.Width

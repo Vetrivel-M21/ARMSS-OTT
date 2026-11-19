@@ -216,21 +216,18 @@ class _NativeVideoPlayerScreenState extends ConsumerState<NativeVideoPlayerScree
   }) async {
     if (!mounted) return;
 
+    final oldChewie = _chewieController;
+    final oldVideo = _videoPlayerController;
+    final isSwitching = oldVideo != null && oldVideo.value.isInitialized;
+    final wasPlaying = isSwitching && oldVideo.value.isPlaying;
+
     setState(() {
-      _isLoading = true;
-      _statusMessage = isLocalFile ? 'Loading offline playback...' : 'Buffering stream...';
+      _isLoading = !isSwitching;
+      _statusMessage = isLocalFile ? 'Loading offline playback...' : (isSwitching ? 'Switching quality...' : 'Buffering stream...');
       _errorMessage = null;
     });
 
     try {
-      // Clean up previous controllers safely
-      final oldChewie = _chewieController;
-      final oldVideo = _videoPlayerController;
-      _chewieController = null;
-      _videoPlayerController = null;
-      oldChewie?.dispose();
-      await oldVideo?.dispose();
-
       VideoPlayerController videoController;
       final isLocal = isLocalFile || (!targetUrl.startsWith('http://') && !targetUrl.startsWith('https://'));
       if (isLocal) {
@@ -256,7 +253,6 @@ class _NativeVideoPlayerScreenState extends ConsumerState<NativeVideoPlayerScree
         );
       }
 
-      _videoPlayerController = videoController;
       await videoController.initialize();
 
       if (kDebugMode) {
@@ -280,6 +276,10 @@ class _NativeVideoPlayerScreenState extends ConsumerState<NativeVideoPlayerScree
       final metaDur = _effectiveDuration;
       if (startAt > Duration.zero && metaDur > Duration.zero && startAt < metaDur) {
         await videoController.seekTo(startAt);
+      }
+
+      if (wasPlaying) {
+        await videoController.play();
       }
 
       // Track playback position & wakelock state
@@ -363,7 +363,16 @@ class _NativeVideoPlayerScreenState extends ConsumerState<NativeVideoPlayerScree
         },
       );
 
+      // Swap controllers seamlessly
+      _videoPlayerController = videoController;
       _chewieController = chewieController;
+
+      // Safely dispose previous controllers now that the new stream is attached and playing
+      if (oldVideo != null) {
+        oldVideo.removeListener(_onControllerUpdate);
+      }
+      oldChewie?.dispose();
+      await oldVideo?.dispose();
 
       setState(() {
         _isLoading = false;
@@ -375,6 +384,20 @@ class _NativeVideoPlayerScreenState extends ConsumerState<NativeVideoPlayerScree
       _scheduleTokenRenewal();
     } catch (e) {
       if (!mounted) return;
+      // If we already had a functional stream running, do NOT break it with a full-screen error
+      if (_videoPlayerController != null && _videoPlayerController!.value.isInitialized) {
+        setState(() {
+          _isLoading = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Quality stream unavailable. Continuing current stream.'),
+            backgroundColor: AppColors.surfaceElevated,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+        return;
+      }
       setState(() {
         _isLoading = false;
         _errorMessage = 'Failed to load video stream: $e';
@@ -514,17 +537,32 @@ class _NativeVideoPlayerScreenState extends ConsumerState<NativeVideoPlayerScree
     if (ticket == null) return;
 
     final targetUrl = (quality == 'Auto') ? ticket.autoUrl : ticket.getRenditionUrl(quality);
+    final previousQuality = _selectedQuality;
 
     setState(() {
       _selectedQuality = quality;
     });
 
-    await _initializeStream(targetUrl: targetUrl, startAt: _lastPosition);
+    try {
+      await _initializeStream(targetUrl: targetUrl, startAt: _lastPosition);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _selectedQuality = previousQuality;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Could not switch to $quality. Retaining $previousQuality.'),
+          backgroundColor: AppColors.surfaceElevated,
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    }
   }
 
   void _showQualitySheet() {
     final ticket = _playbackTicket;
-    final rungs = ['Auto', if (ticket != null) ...ticket.availableRenditions else ...['1080p', '720p', '480p', '360p']];
+    final rungs = ['Auto', if (ticket != null) ...ticket.availableRenditions else ...['1080p', '720p', '480p', '360p', '240p', '144p']];
 
     showModalBottomSheet(
       context: context,
@@ -596,6 +634,10 @@ class _NativeVideoPlayerScreenState extends ConsumerState<NativeVideoPlayerScree
                           subtitle = 'Standard Definition - Data Saver';
                         } else if (rung == '360p') {
                           subtitle = 'Low Bandwidth';
+                        } else if (rung == '240p') {
+                          subtitle = 'Low Data (Data Saver)';
+                        } else if (rung == '144p') {
+                          subtitle = 'Very Low Bandwidth (Ultra Saver)';
                         }
 
                         return ListTile(

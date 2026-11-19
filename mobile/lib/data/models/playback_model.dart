@@ -47,17 +47,18 @@ class PlaybackTicket {
   /// Resolved absolute URL for Master playlist (ABR Auto)
   String get autoUrl => ApiConstants.resolveMediaUrl(manifestUrl);
 
-  /// Resolved absolute URL for a specific rendition (e.g. 1080p, 720p, 480p, 360p)
+  /// Resolved absolute URL for a specific rendition (e.g. 1080p, 720p, 480p, 360p, 240p, 144p)
   String getRenditionUrl(String rendition) {
     final t = token;
     final tokenSuffix = (t != null && t.isNotEmpty) ? '?token=$t' : '';
-    final path = '/api/videos/$videoId/$rendition/index.m3u8$tokenSuffix';
+    final clean = rendition.replaceAll('.m3u8', '').replaceAll('/index', '');
+    final path = '/api/videos/$videoId/$clean.m3u8$tokenSuffix';
     return ApiConstants.resolveMediaUrl(path);
   }
 
   /// Available ladder rungs capped at maxHeight (1080p on mobile)
   List<String> get availableRenditions {
-    const allRungs = ['1080p', '720p', '480p', '360p'];
+    const allRungs = ['1080p', '720p', '480p', '360p', '240p', '144p'];
     return allRungs.where((r) {
       final height = int.tryParse(r.replaceAll('p', '')) ?? 0;
       return height <= maxHeight;

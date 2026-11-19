@@ -115,8 +115,10 @@ func TestEndToEndPipeline(t *testing.T) {
 	r.With(middleware.RequireAuth).Get("/videos/{id}/playback", GetPlaybackTicket)
 	r.Get("/videos/{id}/master.m3u8", GetMasterPlaylist)
 	r.Get("/videos/{id}/{rendition}.m3u8", GetRenditionPlaylist)
+	r.Get("/videos/{id}/segment/{filename}", GetSegmentProxy)
 	r.Get("/api/videos/{id}/master.m3u8", GetMasterPlaylist)
 	r.Get("/api/videos/{id}/{rendition}.m3u8", GetRenditionPlaylist)
+	r.Get("/api/videos/{id}/segment/{filename}", GetSegmentProxy)
 
 	ts := httptest.NewServer(r)
 	defer ts.Close()

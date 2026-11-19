@@ -519,6 +519,8 @@ export function VideoPlayer({
   const handleQualitySelect = (levelIndex: number) => {
     if (!hlsRef.current) return;
     hlsRef.current.currentLevel = levelIndex;
+    hlsRef.current.nextLevel = levelIndex;
+    hlsRef.current.loadLevel = levelIndex;
     setCurrentLevel(levelIndex);
     setActiveMenu(null);
     resetControlsTimer();
@@ -774,21 +776,24 @@ export function VideoPlayer({
                     {currentLevel === -1 && <Check className="w-3.5 h-3.5" />}
                   </button>
 
-                  {filteredLevels.map((lvl, idx) => (
-                    <button
-                      key={idx}
-                      onClick={() => handleQualitySelect(idx)}
-                      className={cn(
-                        "w-full flex items-center justify-between px-2.5 py-1.5 rounded hover:bg-white/10 text-left cursor-pointer transition-colors",
-                        currentLevel === idx && "text-red-500 font-semibold",
-                      )}
-                    >
-                      <span>
-                        {lvl.height}p {lvl.height >= 2160 ? "4K" : lvl.height >= 1080 ? "FHD" : "HD"}
-                      </span>
-                      {currentLevel === idx && <Check className="w-3.5 h-3.5" />}
-                    </button>
-                  ))}
+                  {filteredLevels.map((lvl) => {
+                    const originalIdx = levels.indexOf(lvl);
+                    return (
+                      <button
+                        key={originalIdx}
+                        onClick={() => handleQualitySelect(originalIdx)}
+                        className={cn(
+                          "w-full flex items-center justify-between px-2.5 py-1.5 rounded hover:bg-white/10 text-left cursor-pointer transition-colors",
+                          currentLevel === originalIdx && "text-red-500 font-semibold",
+                        )}
+                      >
+                        <span>
+                          {lvl.height}p {lvl.height >= 2160 ? "4K" : lvl.height >= 1080 ? "FHD" : lvl.height >= 720 ? "HD" : lvl.height >= 480 ? "SD" : "LD"}
+                        </span>
+                        {currentLevel === originalIdx && <Check className="w-3.5 h-3.5" />}
+                      </button>
+                    );
+                  })}
                 </div>
               )}
             </div>

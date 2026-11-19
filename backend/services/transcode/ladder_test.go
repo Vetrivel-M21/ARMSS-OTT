@@ -14,11 +14,11 @@ func TestFilterLadder_4KSource(t *testing.T) {
 	}
 
 	rungs := FilterLadder(meta)
-	if len(rungs) != 5 {
-		t.Fatalf("expected 5 rungs for 4K source, got %d", len(rungs))
+	if len(rungs) != 7 {
+		t.Fatalf("expected 7 rungs for 4K source, got %d", len(rungs))
 	}
 
-	expectedRungNames := []string{"2160p", "1080p", "720p", "480p", "360p"}
+	expectedRungNames := []string{"2160p", "1080p", "720p", "480p", "360p", "240p", "144p"}
 	for i, expected := range expectedRungNames {
 		if rungs[i].Name != expected {
 			t.Errorf("rung index %d: expected %s, got %s", i, expected, rungs[i].Name)
@@ -35,8 +35,8 @@ func TestFilterLadder_1080pSource(t *testing.T) {
 	}
 
 	rungs := FilterLadder(meta)
-	if len(rungs) != 4 {
-		t.Fatalf("expected 4 rungs for 1080p source (2160p skipped), got %d", len(rungs))
+	if len(rungs) != 6 {
+		t.Fatalf("expected 6 rungs for 1080p source (2160p skipped), got %d", len(rungs))
 	}
 
 	// 2160p must be excluded
@@ -60,11 +60,11 @@ func TestFilterLadder_720pSource(t *testing.T) {
 	}
 
 	rungs := FilterLadder(meta)
-	if len(rungs) != 3 {
-		t.Fatalf("expected 3 rungs for 720p source, got %d", len(rungs))
+	if len(rungs) != 5 {
+		t.Fatalf("expected 5 rungs for 720p source, got %d", len(rungs))
 	}
 
-	expectedRungs := []string{"720p", "480p", "360p"}
+	expectedRungs := []string{"720p", "480p", "360p", "240p", "144p"}
 	for i, exp := range expectedRungs {
 		if rungs[i].Name != exp {
 			t.Errorf("rung %d: expected %s, got %s", i, exp, rungs[i].Name)

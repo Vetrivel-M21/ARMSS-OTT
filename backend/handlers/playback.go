@@ -441,6 +441,27 @@ func GetMasterPlaylist(w http.ResponseWriter, r *http.Request) {
 func GetRenditionPlaylist(w http.ResponseWriter, r *http.Request) {
 	videoID := chi.URLParam(r, "id")
 	rendition := chi.URLParam(r, "rendition")
+	if rendition == "" {
+		if num := chi.URLParam(r, "num"); num != "" {
+			rendition = "stream_" + num
+		}
+	}
+	if rendition == "" {
+		// Fallback parse from URL path (e.g. /videos/{id}/stream_0.m3u8 or /videos/{id}/1080p/index.m3u8)
+		path := r.URL.Path
+		if idx := strings.Index(path, "?"); idx != -1 {
+			path = path[:idx]
+		}
+		parts := strings.Split(strings.Trim(path, "/"), "/")
+		if len(parts) >= 2 {
+			last := parts[len(parts)-1]
+			if last == "index.m3u8" && len(parts) >= 3 {
+				rendition = parts[len(parts)-2]
+			} else {
+				rendition = last
+			}
+		}
+	}
 	tokenStr := extractToken(r)
 
 	claims, err := playback.ValidatePlaybackToken(tokenStr)
@@ -460,7 +481,9 @@ func GetRenditionPlaylist(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Normalize rendition filename
-	cleanRendition := strings.TrimSuffix(rendition, "/index.m3u8")
+	cleanRendition := strings.TrimPrefix(rendition, "./")
+	cleanRendition = strings.TrimSuffix(cleanRendition, "/index.m3u8")
+	cleanRendition = strings.TrimSuffix(cleanRendition, ".m3u8")
 	if !strings.HasSuffix(cleanRendition, ".m3u8") {
 		cleanRendition += ".m3u8"
 	}

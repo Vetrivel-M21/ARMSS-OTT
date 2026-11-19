@@ -32,7 +32,7 @@ import { BackdropArt } from "./poster";
 import { Button } from "./ui/button";
 
 const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2];
-const QUALITIES = ["Auto", "4K", "1080p", "720p"] as const;
+const QUALITIES = ["Auto", "4K", "1080p", "720p", "480p", "360p", "240p", "144p"] as const;
 const AUDIO_TRACKS = [
   "Tamil (Original · 5.1 Atmos)",
   "Telugu (Dubbed)",
@@ -531,11 +531,22 @@ export function PlayerView({
 
     if (q === "Auto") {
       hls.currentLevel = -1;
+      hls.nextLevel = -1;
+      hls.loadLevel = -1;
       toast.success("Streaming quality: Auto (Adaptive Bitrate)");
       return;
     }
 
-    const targetHeight = q === "4K" ? 2160 : q === "1080p" ? 1080 : 720;
+    const heightMap: Record<string, number> = {
+      "4K": 2160,
+      "1080p": 1080,
+      "720p": 720,
+      "480p": 480,
+      "360p": 360,
+      "240p": 240,
+      "144p": 144,
+    };
+    const targetHeight = heightMap[q] ?? 720;
     let bestIdx = -1;
     let bestDiff = 999999;
     levels.forEach((lvl, idx) => {
@@ -548,6 +559,8 @@ export function PlayerView({
 
     if (bestIdx !== -1) {
       hls.currentLevel = bestIdx;
+      hls.nextLevel = bestIdx;
+      hls.loadLevel = bestIdx;
       toast.success(`Locked resolution: ${levels[bestIdx].height}p (${q})`);
     } else {
       toast(`Streaming quality: ${q}`);
