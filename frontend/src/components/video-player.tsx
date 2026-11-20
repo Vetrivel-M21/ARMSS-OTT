@@ -814,7 +814,7 @@ export function VideoPlayer({
               </button>
 
               {activeMenu === "quality" && (
-                <div className="absolute bottom-full right-0 mb-3 w-40 bg-zinc-900/95 border border-white/10 rounded-lg shadow-xl backdrop-blur-md p-1.5 z-50 text-xs">
+                <div className="absolute bottom-full right-0 mb-3 w-40 max-h-[180px] sm:max-h-[240px] overflow-y-auto bg-zinc-900/95 border border-white/10 rounded-lg shadow-xl backdrop-blur-md p-1.5 z-50 text-xs">
                   <div className="px-2 py-1 text-zinc-400 font-semibold uppercase text-[10px] tracking-wider border-b border-white/5 mb-1">
                     Quality
                   </div>

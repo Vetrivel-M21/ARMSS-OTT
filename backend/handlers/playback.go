@@ -431,7 +431,6 @@ func GetMasterPlaylist(w http.ResponseWriter, r *http.Request) {
 
 	storageSvc := storage.GetGlobalStorage()
 	var rawBytes []byte
-	var err error
 
 	if storageSvc != nil {
 		masterKey := fmt.Sprintf("videos/%s/master.m3u8", videoID)
