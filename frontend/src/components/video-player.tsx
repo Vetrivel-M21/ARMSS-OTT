@@ -521,59 +521,42 @@ export function VideoPlayer({
   };
 
   const handleQualitySelect = (levelIndex: number) => {
-    if (!hlsRef.current || !videoRef.current) return;
+    if (!hlsRef.current) return;
     const hls = hlsRef.current;
     const video = videoRef.current;
-    const curTime = video.currentTime;
-    const wasPlaying = !video.paused;
 
     setCurrentLevel(levelIndex);
 
-    const activeLevels = availableLevelsRef.current.length > 0
-      ? availableLevelsRef.current
-      : levels;
-
     if (levelIndex === -1) {
-      // Auto (Adaptive ABR): reload master playlist with full ladder
+      // Auto (Adaptive): let Hls.js dynamically select level based on network bandwidth
       hls.currentLevel = -1;
-      if (masterUrlRef.current && hls.url !== masterUrlRef.current) {
-        hls.loadSource(masterUrlRef.current);
+      const cur = (hls.loadLevel >= 0 && hls.levels[hls.loadLevel]) ? hls.levels[hls.loadLevel] : hls.levels[0];
+      if (cur) {
+        setAutoLevelResolution(`${cur.height}p`);
       }
     } else {
-      const targetLevel = activeLevels[levelIndex];
-      if (targetLevel) {
-        const renditionUrl = (targetLevel.url && targetLevel.url[0]) ? targetLevel.url[0] : "";
-        if (renditionUrl) {
-          // Direct variant loading immediately flushes buffer and loads the exact rendition!
-          hls.loadSource(renditionUrl);
-        } else {
-          hls.currentLevel = levelIndex;
-        }
+      // Manual Quality Lock: lock onto chosen level immediately
+      hls.currentLevel = levelIndex;
+      const target = hls.levels[levelIndex];
+      if (target) {
+        setAutoLevelResolution(`${target.height}p`);
       }
     }
 
-    // Seamlessly restore playback time without stutter
-    const restoreTime = () => {
-      try {
-        if (curTime > 0) {
-          video.currentTime = curTime;
-        }
-        if (wasPlaying) {
-          video.play().catch(() => {});
-        }
-      } catch (_) {}
-    };
+    // Force immediate re-buffer & segment fetch from the backend for the chosen resolution
+    if (video) {
+      const curTime = video.currentTime;
+      hls.stopLoad();
+      hls.startLoad(curTime);
 
-    hls.once(Hls.Events.LEVEL_LOADED, restoreTime);
-
-    // Immediate micro-nudge for video decoder if paused or playing
-    try {
+      // Nudge currentTime slightly to trigger an HTML5 seek event, forcing the browser's video
+      // pipeline to flush cached frames and decode the new incoming resolution segments immediately
       if (curTime > 0.01) {
-        video.currentTime = curTime - 0.001;
-      } else if (video.duration > 0.1) {
-        video.currentTime = curTime + 0.005;
+        video.currentTime = Math.max(0, curTime - 0.001);
+      } else {
+        video.currentTime = 0.001;
       }
-    } catch (_) {}
+    }
 
     setActiveMenu(null);
     resetControlsTimer();

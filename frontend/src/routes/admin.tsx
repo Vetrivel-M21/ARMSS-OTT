@@ -1460,6 +1460,7 @@ function ContentTab() {
     episode_number: number;
     title: string;
     runtime_min: number;
+    runtime_sec?: number;
     synopsis: string;
     video_url: string;
     thumbnail_url: string;
@@ -1495,6 +1496,7 @@ function ContentTab() {
     year: 2024,
     maturity: "U",
     runtime_min: 120,
+    runtime_sec: 0,
     match_percent: 95,
     required_tier: "free",
     logline: "",
@@ -1557,7 +1559,8 @@ function ContentTab() {
       kind: t.kind || "film",
       year: t.year || 2024,
       maturity: t.maturity || "U",
-      runtime_min: t.runtime_min || t.runtimeMin || 120,
+      runtime_min: t.runtime_min !== undefined ? t.runtime_min : (t.runtimeMin || 120),
+      runtime_sec: t.runtime_sec !== undefined ? t.runtime_sec : (t.runtimeSec || 0),
       match_percent: t.match_percent || t.match || 95,
       required_tier: t.required_tier || "free",
       logline: t.logline || "",
@@ -1603,7 +1606,8 @@ function ContentTab() {
       kind: editingTitle.kind,
       year: parseInt(editingTitle.year) || 2024,
       maturity: editingTitle.maturity,
-      runtime_min: parseInt(editingTitle.runtime_min) || 120,
+      runtime_min: parseInt(editingTitle.runtime_min) || 0,
+      runtime_sec: Math.max(0, Math.min(59, parseInt(editingTitle.runtime_sec) || 0)),
       match_percent: parseInt(editingTitle.match_percent) || 95,
       required_tier: editingTitle.required_tier,
       logline: editingTitle.logline,
@@ -1644,7 +1648,8 @@ function ContentTab() {
           season_number: Number(editingEpisodeForm.season_number) || 1,
           episode_number: Number(editingEpisodeForm.episode_number) || 1,
           title: editingEpisodeForm.title.trim(),
-          runtime_min: Number(editingEpisodeForm.runtime_min) || 45,
+          runtime_min: Number(editingEpisodeForm.runtime_min) || 0,
+          runtime_sec: Math.max(0, Math.min(59, Number(editingEpisodeForm.runtime_sec) || 0)),
           synopsis: editingEpisodeForm.synopsis,
           video_url: editingEpisodeForm.video_url,
           thumbnail_url: editingEpisodeForm.thumbnail_url,
@@ -1662,7 +1667,8 @@ function ContentTab() {
           season_number: Number(editingEpisodeForm.season_number) || 1,
           episode_number: Number(editingEpisodeForm.episode_number) || 1,
           title: editingEpisodeForm.title.trim(),
-          runtime_min: Number(editingEpisodeForm.runtime_min) || 45,
+          runtime_min: Number(editingEpisodeForm.runtime_min) || 0,
+          runtime_sec: Math.max(0, Math.min(59, Number(editingEpisodeForm.runtime_sec) || 0)),
           synopsis: editingEpisodeForm.synopsis,
           video_url: editingEpisodeForm.video_url,
           thumbnail_url: editingEpisodeForm.thumbnail_url,
@@ -1719,7 +1725,8 @@ function ContentTab() {
       ...newTitle,
       video_url: newTitle.video_url,
       year: parseInt(String(newTitle.year)) || 2024,
-      runtime_min: parseInt(String(newTitle.runtime_min)) || 120,
+      runtime_min: parseInt(String(newTitle.runtime_min)) || 0,
+      runtime_sec: Math.max(0, Math.min(59, parseInt(String(newTitle.runtime_sec)) || 0)),
       match_percent: parseInt(String(newTitle.match_percent)) || 95,
       genres: genresArr,
       badges: badgesArr,
@@ -1734,6 +1741,7 @@ function ContentTab() {
         year: 2024,
         maturity: "U",
         runtime_min: 120,
+        runtime_sec: 0,
         match_percent: 95,
         required_tier: "free",
         logline: "",
@@ -1942,13 +1950,47 @@ function ContentTab() {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-muted mb-1">Runtime (min)</label>
-                    <input
-                      type="number"
-                      value={editingTitle.runtime_min}
-                      onChange={(e) => setEditingTitle({ ...editingTitle, runtime_min: e.target.value })}
-                      className="w-full rounded-lg bg-elevated px-2.5 py-1.5 text-xs text-fg border border-border focus:outline-none"
-                    />
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-xs font-medium text-muted">Runtime</label>
+                      <span className="text-[10px] text-accent font-mono font-medium">
+                        {(() => {
+                          const m = parseInt(String(editingTitle.runtime_min)) || 0;
+                          const s = parseInt(String(editingTitle.runtime_sec)) || 0;
+                          const total = m * 60 + s;
+                          if (total === 0) return "0s";
+                          const hours = Math.floor(total / 3600);
+                          const mins = Math.floor((total % 3600) / 60);
+                          const secs = total % 60;
+                          if (hours > 0) return `${hours}h ${mins}m ${secs > 0 ? `${secs}s` : ""}`.trim();
+                          return `${mins}m ${secs > 0 ? `${secs}s` : ""}`.trim();
+                        })()}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <div className="relative">
+                        <input
+                          type="number"
+                          min={0}
+                          placeholder="Min"
+                          value={editingTitle.runtime_min}
+                          onChange={(e) => setEditingTitle({ ...editingTitle, runtime_min: Math.max(0, parseInt(e.target.value) || 0) })}
+                          className="w-full rounded-lg bg-elevated pl-2 pr-5 py-1.5 text-xs text-fg border border-border focus:outline-none"
+                        />
+                        <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] text-muted pointer-events-none">m</span>
+                      </div>
+                      <div className="relative">
+                        <input
+                          type="number"
+                          min={0}
+                          max={59}
+                          placeholder="Sec"
+                          value={editingTitle.runtime_sec ?? 0}
+                          onChange={(e) => setEditingTitle({ ...editingTitle, runtime_sec: Math.max(0, Math.min(59, parseInt(e.target.value) || 0)) })}
+                          className="w-full rounded-lg bg-elevated pl-2 pr-5 py-1.5 text-xs text-fg border border-border focus:outline-none"
+                        />
+                        <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] text-muted pointer-events-none">s</span>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -2196,6 +2238,7 @@ function ContentTab() {
                             episode_number: maxEp + 1,
                             title: `Episode ${maxEp + 1}`,
                             runtime_min: 45,
+                            runtime_sec: 0,
                             synopsis: "",
                             video_url: "",
                             thumbnail_url: "",
@@ -2261,13 +2304,47 @@ function ContentTab() {
 
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                         <div>
-                          <label className="block text-[11px] font-medium text-muted mb-1">Runtime (min)</label>
-                          <input
-                            type="number"
-                            value={editingEpisodeForm.runtime_min}
-                            onChange={(e) => setEditingEpisodeForm({ ...editingEpisodeForm, runtime_min: parseInt(e.target.value) || 45 })}
-                            className="w-full rounded-lg bg-elevated px-2.5 py-1.5 text-xs text-fg border border-border focus:outline-none"
-                          />
+                          <div className="flex items-center justify-between mb-1">
+                            <label className="block text-[11px] font-medium text-muted">Runtime</label>
+                            <span className="text-[10px] text-accent font-mono font-medium">
+                              {(() => {
+                                const m = parseInt(String(editingEpisodeForm.runtime_min)) || 0;
+                                const s = parseInt(String(editingEpisodeForm.runtime_sec)) || 0;
+                                const total = m * 60 + s;
+                                if (total === 0) return "0s";
+                                const hours = Math.floor(total / 3600);
+                                const mins = Math.floor((total % 3600) / 60);
+                                const secs = total % 60;
+                                if (hours > 0) return `${hours}h ${mins}m ${secs > 0 ? `${secs}s` : ""}`.trim();
+                                return `${mins}m ${secs > 0 ? `${secs}s` : ""}`.trim();
+                              })()}
+                            </span>
+                          </div>
+                          <div className="grid grid-cols-2 gap-1.5">
+                            <div className="relative">
+                              <input
+                                type="number"
+                                min={0}
+                                placeholder="Min"
+                                value={editingEpisodeForm.runtime_min}
+                                onChange={(e) => setEditingEpisodeForm({ ...editingEpisodeForm, runtime_min: Math.max(0, parseInt(e.target.value) || 0) })}
+                                className="w-full rounded-lg bg-elevated pl-2 pr-5 py-1.5 text-xs text-fg border border-border focus:outline-none"
+                              />
+                              <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] text-muted pointer-events-none">m</span>
+                            </div>
+                            <div className="relative">
+                              <input
+                                type="number"
+                                min={0}
+                                max={59}
+                                placeholder="Sec"
+                                value={editingEpisodeForm.runtime_sec ?? 0}
+                                onChange={(e) => setEditingEpisodeForm({ ...editingEpisodeForm, runtime_sec: Math.max(0, Math.min(59, parseInt(e.target.value) || 0)) })}
+                                className="w-full rounded-lg bg-elevated pl-2 pr-5 py-1.5 text-xs text-fg border border-border focus:outline-none"
+                              />
+                              <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] text-muted pointer-events-none">s</span>
+                            </div>
+                          </div>
                         </div>
                         <div className="sm:col-span-2">
                           <div className="flex items-center justify-between mb-1">
@@ -2388,7 +2465,7 @@ function ContentTab() {
                                 {ep.title}
                               </p>
                               <div className="flex items-center gap-2 text-[10px] text-muted">
-                                <span>{ep.runtime_min} mins</span>
+                                <span>{ep.runtime_min}m {ep.runtime_sec ? `${ep.runtime_sec}s` : ""}</span>
                                 <span>•</span>
                                 {ep.video_url ? (
                                   <span className="text-emerald-400 flex items-center gap-1 font-mono">
@@ -2410,6 +2487,7 @@ function ContentTab() {
                                   episode_number: ep.episode_number,
                                   title: ep.title,
                                   runtime_min: ep.runtime_min,
+                                  runtime_sec: ep.runtime_sec || 0,
                                   synopsis: ep.synopsis || "",
                                   video_url: ep.video_url || "",
                                   thumbnail_url: ep.thumbnail_url || "",
@@ -2587,13 +2665,47 @@ function ContentTab() {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-muted mb-1">Runtime (min)</label>
-                    <input
-                      type="number"
-                      value={newTitle.runtime_min}
-                      onChange={(e) => setNewTitle({ ...newTitle, runtime_min: parseInt(e.target.value) || 120 })}
-                      className="w-full rounded-lg bg-elevated px-2.5 py-1.5 text-xs text-fg border border-border focus:outline-none"
-                    />
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-xs font-medium text-muted">Runtime</label>
+                      <span className="text-[10px] text-accent font-mono font-medium">
+                        {(() => {
+                          const m = parseInt(String(newTitle.runtime_min)) || 0;
+                          const s = parseInt(String(newTitle.runtime_sec)) || 0;
+                          const total = m * 60 + s;
+                          if (total === 0) return "0s";
+                          const hours = Math.floor(total / 3600);
+                          const mins = Math.floor((total % 3600) / 60);
+                          const secs = total % 60;
+                          if (hours > 0) return `${hours}h ${mins}m ${secs > 0 ? `${secs}s` : ""}`.trim();
+                          return `${mins}m ${secs > 0 ? `${secs}s` : ""}`.trim();
+                        })()}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <div className="relative">
+                        <input
+                          type="number"
+                          min={0}
+                          placeholder="Min"
+                          value={newTitle.runtime_min}
+                          onChange={(e) => setNewTitle({ ...newTitle, runtime_min: Math.max(0, parseInt(e.target.value) || 0) })}
+                          className="w-full rounded-lg bg-elevated pl-2 pr-5 py-1.5 text-xs text-fg border border-border focus:outline-none"
+                        />
+                        <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] text-muted pointer-events-none">m</span>
+                      </div>
+                      <div className="relative">
+                        <input
+                          type="number"
+                          min={0}
+                          max={59}
+                          placeholder="Sec"
+                          value={newTitle.runtime_sec ?? 0}
+                          onChange={(e) => setNewTitle({ ...newTitle, runtime_sec: Math.max(0, Math.min(59, parseInt(e.target.value) || 0)) })}
+                          className="w-full rounded-lg bg-elevated pl-2 pr-5 py-1.5 text-xs text-fg border border-border focus:outline-none"
+                        />
+                        <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] text-muted pointer-events-none">s</span>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>

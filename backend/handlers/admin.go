@@ -137,13 +137,16 @@ func AdminBanUser(w http.ResponseWriter, r *http.Request) {
 
 // AdminListTitles — GET /api/admin/titles
 func AdminListTitles(w http.ResponseWriter, r *http.Request) {
-	rows, err := database.DB.Query(`SELECT id, title, kind, year, maturity, runtime_min, match_percent, logline, synopsis, poster, backdrop, trailer, video_url, tone, original, kids, required_tier, genres, badges FROM titles ORDER BY title`)
+	rows, err := database.DB.Query(`SELECT id, title, kind, year, maturity, runtime_min, COALESCE(runtime_sec, 0), match_percent, logline, synopsis, poster, backdrop, trailer, video_url, tone, original, kids, required_tier, genres, badges FROM titles ORDER BY title`)
 	if err != nil {
-		// Fallback for older database before video_url migration
-		rows, err = database.DB.Query(`SELECT id, title, kind, year, maturity, runtime_min, match_percent, logline, synopsis, poster, backdrop, trailer, tone, original, kids, required_tier, genres, badges FROM titles ORDER BY title`)
+		rows, err = database.DB.Query(`SELECT id, title, kind, year, maturity, runtime_min, match_percent, logline, synopsis, poster, backdrop, trailer, video_url, tone, original, kids, required_tier, genres, badges FROM titles ORDER BY title`)
 		if err != nil {
-			http.Error(w, `{"error":"database error"}`, http.StatusInternalServerError)
-			return
+			// Fallback for older database before video_url migration
+			rows, err = database.DB.Query(`SELECT id, title, kind, year, maturity, runtime_min, match_percent, logline, synopsis, poster, backdrop, trailer, tone, original, kids, required_tier, genres, badges FROM titles ORDER BY title`)
+			if err != nil {
+				http.Error(w, `{"error":"database error"}`, http.StatusInternalServerError)
+				return
+			}
 		}
 	}
 	defer rows.Close()
@@ -154,7 +157,9 @@ func AdminListTitles(w http.ResponseWriter, r *http.Request) {
 		var genresStr, badgesStr string
 		var trailer, videoURL sql.NullString
 		cols, _ := rows.Columns()
-		if len(cols) >= 19 {
+		if len(cols) >= 20 {
+			_ = rows.Scan(&t.ID, &t.Title, &t.Kind, &t.Year, &t.Maturity, &t.RuntimeMin, &t.RuntimeSec, &t.Match, &t.Logline, &t.Synopsis, &t.Poster, &t.Backdrop, &trailer, &videoURL, &t.Tone, &t.Original, &t.Kids, &t.RequiredTier, &genresStr, &badgesStr)
+		} else if len(cols) >= 19 {
 			_ = rows.Scan(&t.ID, &t.Title, &t.Kind, &t.Year, &t.Maturity, &t.RuntimeMin, &t.Match, &t.Logline, &t.Synopsis, &t.Poster, &t.Backdrop, &trailer, &videoURL, &t.Tone, &t.Original, &t.Kids, &t.RequiredTier, &genresStr, &badgesStr)
 		} else {
 			_ = rows.Scan(&t.ID, &t.Title, &t.Kind, &t.Year, &t.Maturity, &t.RuntimeMin, &t.Match, &t.Logline, &t.Synopsis, &t.Poster, &t.Backdrop, &trailer, &t.Tone, &t.Original, &t.Kids, &t.RequiredTier, &genresStr, &badgesStr)
@@ -189,29 +194,39 @@ func AdminGetTitle(w http.ResponseWriter, r *http.Request) {
 	var trailer, videoURL sql.NullString
 
 	err := database.DB.QueryRow(
-		`SELECT id, title, kind, year, maturity, runtime_min, match_percent, logline, synopsis, poster, backdrop, trailer, video_url, tone, original, kids, required_tier, genres, badges
+		`SELECT id, title, kind, year, maturity, runtime_min, COALESCE(runtime_sec, 0), match_percent, logline, synopsis, poster, backdrop, trailer, video_url, tone, original, kids, required_tier, genres, badges
 		 FROM titles WHERE id = ?`,
 		titleID,
 	).Scan(
-		&t.ID, &t.Title, &t.Kind, &t.Year, &t.Maturity, &t.RuntimeMin, &t.Match, &t.Logline, &t.Synopsis, &t.Poster, &t.Backdrop, &trailer, &videoURL, &t.Tone, &t.Original, &t.Kids, &t.RequiredTier, &genresStr, &badgesStr,
+		&t.ID, &t.Title, &t.Kind, &t.Year, &t.Maturity, &t.RuntimeMin, &t.RuntimeSec, &t.Match, &t.Logline, &t.Synopsis, &t.Poster, &t.Backdrop, &trailer, &videoURL, &t.Tone, &t.Original, &t.Kids, &t.RequiredTier, &genresStr, &badgesStr,
 	)
 
 	if err != nil {
-		// Fallback without video_url
+		// Fallback without runtime_sec
 		err = database.DB.QueryRow(
-			`SELECT id, title, kind, year, maturity, runtime_min, match_percent, logline, synopsis, poster, backdrop, trailer, tone, original, kids, required_tier, genres, badges
+			`SELECT id, title, kind, year, maturity, runtime_min, match_percent, logline, synopsis, poster, backdrop, trailer, video_url, tone, original, kids, required_tier, genres, badges
 			 FROM titles WHERE id = ?`,
 			titleID,
 		).Scan(
-			&t.ID, &t.Title, &t.Kind, &t.Year, &t.Maturity, &t.RuntimeMin, &t.Match, &t.Logline, &t.Synopsis, &t.Poster, &t.Backdrop, &trailer, &t.Tone, &t.Original, &t.Kids, &t.RequiredTier, &genresStr, &badgesStr,
+			&t.ID, &t.Title, &t.Kind, &t.Year, &t.Maturity, &t.RuntimeMin, &t.Match, &t.Logline, &t.Synopsis, &t.Poster, &t.Backdrop, &trailer, &videoURL, &t.Tone, &t.Original, &t.Kids, &t.RequiredTier, &genresStr, &badgesStr,
 		)
 		if err != nil {
-			if err == sql.ErrNoRows {
-				http.Error(w, `{"error":"title not found"}`, http.StatusNotFound)
+			// Fallback without video_url
+			err = database.DB.QueryRow(
+				`SELECT id, title, kind, year, maturity, runtime_min, match_percent, logline, synopsis, poster, backdrop, trailer, tone, original, kids, required_tier, genres, badges
+				 FROM titles WHERE id = ?`,
+				titleID,
+			).Scan(
+				&t.ID, &t.Title, &t.Kind, &t.Year, &t.Maturity, &t.RuntimeMin, &t.Match, &t.Logline, &t.Synopsis, &t.Poster, &t.Backdrop, &trailer, &t.Tone, &t.Original, &t.Kids, &t.RequiredTier, &genresStr, &badgesStr,
+			)
+			if err != nil {
+				if err == sql.ErrNoRows {
+					http.Error(w, `{"error":"title not found"}`, http.StatusNotFound)
+					return
+				}
+				http.Error(w, `{"error":"database error"}`, http.StatusInternalServerError)
 				return
 			}
-			http.Error(w, `{"error":"database error"}`, http.StatusInternalServerError)
-			return
 		}
 	}
 
@@ -241,6 +256,7 @@ func AdminUpdateTitle(w http.ResponseWriter, r *http.Request) {
 		Year         *int                     `json:"year"`
 		Maturity     *string                  `json:"maturity"`
 		RuntimeMin   *int                     `json:"runtime_min"`
+		RuntimeSec   *int                     `json:"runtime_sec"`
 		MatchPercent *int                     `json:"match_percent"`
 		Logline      *string                  `json:"logline"`
 		Synopsis     *string                  `json:"synopsis"`
@@ -283,6 +299,10 @@ func AdminUpdateTitle(w http.ResponseWriter, r *http.Request) {
 	if req.RuntimeMin != nil {
 		setClauses = append(setClauses, "runtime_min = ?")
 		args = append(args, *req.RuntimeMin)
+	}
+	if req.RuntimeSec != nil {
+		setClauses = append(setClauses, "runtime_sec = ?")
+		args = append(args, *req.RuntimeSec)
 	}
 	if req.MatchPercent != nil {
 		setClauses = append(setClauses, "match_percent = ?")
@@ -425,21 +445,29 @@ func AdminCreateTitle(w http.ResponseWriter, r *http.Request) {
 	badgesStr := strings.Join(t.Badges, ",")
 
 	_, err := database.DB.Exec(
-		`INSERT INTO titles (id, title, kind, year, maturity, runtime_min, match_percent, logline, synopsis, poster, backdrop, trailer, video_url, tone, original, kids, required_tier, genres, badges)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		t.ID, t.Title, t.Kind, t.Year, t.Maturity, t.RuntimeMin, t.Match, t.Logline, t.Synopsis, t.Poster, t.Backdrop, t.Trailer, t.VideoURL, t.Tone, t.Original, t.Kids, string(t.RequiredTier), genresStr, badgesStr,
+		`INSERT INTO titles (id, title, kind, year, maturity, runtime_min, runtime_sec, match_percent, logline, synopsis, poster, backdrop, trailer, video_url, tone, original, kids, required_tier, genres, badges)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		t.ID, t.Title, t.Kind, t.Year, t.Maturity, t.RuntimeMin, t.RuntimeSec, t.Match, t.Logline, t.Synopsis, t.Poster, t.Backdrop, t.Trailer, t.VideoURL, t.Tone, t.Original, t.Kids, string(t.RequiredTier), genresStr, badgesStr,
 	)
 	if err != nil {
-		// Fallback without video_url if table column missing
+		// Fallback without runtime_sec
 		_, err = database.DB.Exec(
-			`INSERT INTO titles (id, title, kind, year, maturity, runtime_min, match_percent, logline, synopsis, poster, backdrop, trailer, tone, original, kids, required_tier, genres, badges)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			t.ID, t.Title, t.Kind, t.Year, t.Maturity, t.RuntimeMin, t.Match, t.Logline, t.Synopsis, t.Poster, t.Backdrop, t.Trailer, t.Tone, t.Original, t.Kids, string(t.RequiredTier), genresStr, badgesStr,
+			`INSERT INTO titles (id, title, kind, year, maturity, runtime_min, match_percent, logline, synopsis, poster, backdrop, trailer, video_url, tone, original, kids, required_tier, genres, badges)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			t.ID, t.Title, t.Kind, t.Year, t.Maturity, t.RuntimeMin, t.Match, t.Logline, t.Synopsis, t.Poster, t.Backdrop, t.Trailer, t.VideoURL, t.Tone, t.Original, t.Kids, string(t.RequiredTier), genresStr, badgesStr,
 		)
 		if err != nil {
-			log.Printf("[AdminCreateTitle] Failed inserting title %q (ID: %s): %v", t.Title, t.ID, err)
-			http.Error(w, `{"error":"failed creating title: `+err.Error()+`"}`, http.StatusInternalServerError)
-			return
+			// Fallback without video_url if table column missing
+			_, err = database.DB.Exec(
+				`INSERT INTO titles (id, title, kind, year, maturity, runtime_min, match_percent, logline, synopsis, poster, backdrop, trailer, tone, original, kids, required_tier, genres, badges)
+				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				t.ID, t.Title, t.Kind, t.Year, t.Maturity, t.RuntimeMin, t.Match, t.Logline, t.Synopsis, t.Poster, t.Backdrop, t.Trailer, t.Tone, t.Original, t.Kids, string(t.RequiredTier), genresStr, badgesStr,
+			)
+			if err != nil {
+				log.Printf("[AdminCreateTitle] Failed inserting title %q (ID: %s): %v", t.Title, t.ID, err)
+				http.Error(w, `{"error":"failed creating title: `+err.Error()+`"}`, http.StatusInternalServerError)
+				return
+			}
 		}
 	}
 
@@ -452,19 +480,35 @@ func AdminListEpisodes(w http.ResponseWriter, r *http.Request) {
 	titleID := chi.URLParam(r, "id")
 	episodes := []models.Episode{}
 	rows, err := database.DB.Query(
-		"SELECT id, title_id, season_number, episode_number, title, runtime_min, synopsis, video_url, thumbnail_url, created_at FROM episodes WHERE title_id = ? ORDER BY season_number ASC, episode_number ASC",
+		"SELECT id, title_id, season_number, episode_number, title, runtime_min, COALESCE(runtime_sec, 0), synopsis, video_url, thumbnail_url, created_at FROM episodes WHERE title_id = ? ORDER BY season_number ASC, episode_number ASC",
 		titleID,
 	)
+	if err != nil {
+		rows, err = database.DB.Query(
+			"SELECT id, title_id, season_number, episode_number, title, runtime_min, synopsis, video_url, thumbnail_url, created_at FROM episodes WHERE title_id = ? ORDER BY season_number ASC, episode_number ASC",
+			titleID,
+		)
+	}
 	if err == nil {
 		defer rows.Close()
 		for rows.Next() {
 			var ep models.Episode
 			var thumb sql.NullString
-			if err := rows.Scan(&ep.ID, &ep.TitleID, &ep.SeasonNumber, &ep.EpisodeNumber, &ep.Title, &ep.RuntimeMin, &ep.Synopsis, &ep.VideoURL, &thumb, &ep.CreatedAt); err == nil {
-				if thumb.Valid {
-					ep.ThumbnailURL = thumb.String
+			cols, _ := rows.Columns()
+			if len(cols) >= 11 {
+				if err := rows.Scan(&ep.ID, &ep.TitleID, &ep.SeasonNumber, &ep.EpisodeNumber, &ep.Title, &ep.RuntimeMin, &ep.RuntimeSec, &ep.Synopsis, &ep.VideoURL, &thumb, &ep.CreatedAt); err == nil {
+					if thumb.Valid {
+						ep.ThumbnailURL = thumb.String
+					}
+					episodes = append(episodes, ep)
 				}
-				episodes = append(episodes, ep)
+			} else {
+				if err := rows.Scan(&ep.ID, &ep.TitleID, &ep.SeasonNumber, &ep.EpisodeNumber, &ep.Title, &ep.RuntimeMin, &ep.Synopsis, &ep.VideoURL, &thumb, &ep.CreatedAt); err == nil {
+					if thumb.Valid {
+						ep.ThumbnailURL = thumb.String
+					}
+					episodes = append(episodes, ep)
+				}
 			}
 		}
 	}
@@ -497,13 +541,21 @@ func AdminCreateEpisode(w http.ResponseWriter, r *http.Request) {
 	ep.CreatedAt = time.Now()
 
 	_, err := database.DB.Exec(
-		`INSERT INTO episodes (id, title_id, season_number, episode_number, title, runtime_min, synopsis, video_url, thumbnail_url, created_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		ep.ID, ep.TitleID, ep.SeasonNumber, ep.EpisodeNumber, ep.Title, ep.RuntimeMin, ep.Synopsis, ep.VideoURL, ep.ThumbnailURL, ep.CreatedAt,
+		`INSERT INTO episodes (id, title_id, season_number, episode_number, title, runtime_min, runtime_sec, synopsis, video_url, thumbnail_url, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		ep.ID, ep.TitleID, ep.SeasonNumber, ep.EpisodeNumber, ep.Title, ep.RuntimeMin, ep.RuntimeSec, ep.Synopsis, ep.VideoURL, ep.ThumbnailURL, ep.CreatedAt,
 	)
 	if err != nil {
-		http.Error(w, `{"error":"failed creating episode: `+err.Error()+`"}`, http.StatusInternalServerError)
-		return
+		// Fallback without runtime_sec
+		_, err = database.DB.Exec(
+			`INSERT INTO episodes (id, title_id, season_number, episode_number, title, runtime_min, synopsis, video_url, thumbnail_url, created_at)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			ep.ID, ep.TitleID, ep.SeasonNumber, ep.EpisodeNumber, ep.Title, ep.RuntimeMin, ep.Synopsis, ep.VideoURL, ep.ThumbnailURL, ep.CreatedAt,
+		)
+		if err != nil {
+			http.Error(w, `{"error":"failed creating episode: `+err.Error()+`"}`, http.StatusInternalServerError)
+			return
+		}
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "episode": ep})
@@ -517,6 +569,7 @@ func AdminUpdateEpisode(w http.ResponseWriter, r *http.Request) {
 		EpisodeNumber *int    `json:"episode_number"`
 		Title         *string `json:"title"`
 		RuntimeMin    *int    `json:"runtime_min"`
+		RuntimeSec    *int    `json:"runtime_sec"`
 		Synopsis      *string `json:"synopsis"`
 		VideoURL      *string `json:"video_url"`
 		ThumbnailURL  *string `json:"thumbnail_url"`
@@ -543,6 +596,10 @@ func AdminUpdateEpisode(w http.ResponseWriter, r *http.Request) {
 	if req.RuntimeMin != nil {
 		setClauses = append(setClauses, "runtime_min = ?")
 		args = append(args, *req.RuntimeMin)
+	}
+	if req.RuntimeSec != nil {
+		setClauses = append(setClauses, "runtime_sec = ?")
+		args = append(args, *req.RuntimeSec)
 	}
 	if req.Synopsis != nil {
 		setClauses = append(setClauses, "synopsis = ?")

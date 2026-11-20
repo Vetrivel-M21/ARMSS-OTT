@@ -261,27 +261,41 @@ func GetPlaybackTicket(w http.ResponseWriter, r *http.Request) {
 		videoID,
 	).Scan(&durationSeconds)
 
-	// Check titles table (movies or documentary runtime_min)
+	// Check titles table (movies or documentary runtime_min + runtime_sec)
 	if durationSeconds <= 0 {
 		var titleRuntimeMin float64
-		_ = database.DB.QueryRowContext(r.Context(),
-			"SELECT runtime_min FROM titles WHERE id = ?",
+		var titleRuntimeSec float64
+		err := database.DB.QueryRowContext(r.Context(),
+			"SELECT runtime_min, COALESCE(runtime_sec, 0) FROM titles WHERE id = ?",
 			videoID,
-		).Scan(&titleRuntimeMin)
-		if titleRuntimeMin > 0 {
-			durationSeconds = titleRuntimeMin * 60
+		).Scan(&titleRuntimeMin, &titleRuntimeSec)
+		if err != nil {
+			_ = database.DB.QueryRowContext(r.Context(),
+				"SELECT runtime_min FROM titles WHERE id = ?",
+				videoID,
+			).Scan(&titleRuntimeMin)
+		}
+		if titleRuntimeMin > 0 || titleRuntimeSec > 0 {
+			durationSeconds = (titleRuntimeMin * 60) + titleRuntimeSec
 		}
 	}
 
-	// Also try episodes table if videoID is an episode (column is runtime_min)
+	// Also try episodes table if videoID is an episode (column is runtime_min + runtime_sec)
 	if durationSeconds <= 0 {
 		var epRuntimeMinutes float64
-		_ = database.DB.QueryRowContext(r.Context(),
-			"SELECT runtime_min FROM episodes WHERE id = ?",
+		var epRuntimeSec float64
+		err := database.DB.QueryRowContext(r.Context(),
+			"SELECT runtime_min, COALESCE(runtime_sec, 0) FROM episodes WHERE id = ?",
 			videoID,
-		).Scan(&epRuntimeMinutes)
-		if epRuntimeMinutes > 0 {
-			durationSeconds = epRuntimeMinutes * 60
+		).Scan(&epRuntimeMinutes, &epRuntimeSec)
+		if err != nil {
+			_ = database.DB.QueryRowContext(r.Context(),
+				"SELECT runtime_min FROM episodes WHERE id = ?",
+				videoID,
+			).Scan(&epRuntimeMinutes)
+		}
+		if epRuntimeMinutes > 0 || epRuntimeSec > 0 {
+			durationSeconds = (epRuntimeMinutes * 60) + epRuntimeSec
 		}
 	}
 

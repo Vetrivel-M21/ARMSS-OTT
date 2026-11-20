@@ -31,6 +31,7 @@ export type Episode = {
   number: number;
   title: string;
   runtime: number;
+  runtimeSec?: number;
   synopsis: string;
   video_url?: string;
   thumbnail_url?: string;
@@ -44,6 +45,7 @@ export type Title = {
   year: number;
   maturity: Maturity;
   runtimeMin: number;
+  runtimeSec?: number;
   seasons?: number;
   genres: string[];
   logline: string;
@@ -141,6 +143,7 @@ export function syncBackendTitles(backendTitles: any[]): Title[] {
         year: bt.year || existing?.year || 2024,
         maturity: (bt.maturity as Maturity) || existing?.maturity || "U",
         runtimeMin: bt.runtime_min || existing?.runtimeMin || 120,
+        runtimeSec: bt.runtime_sec !== undefined ? bt.runtime_sec : (existing?.runtimeSec || 0),
         match: bt.match || bt.match_percent || existing?.match || 95,
         logline: bt.logline || existing?.logline || "",
         synopsis: bt.synopsis || existing?.synopsis || bt.logline || "",
@@ -165,6 +168,7 @@ export function syncBackendTitles(backendTitles: any[]): Title[] {
               number: ep.episode_number || ep.number || 1,
               title: ep.title,
               runtime: ep.runtime_min || ep.runtime || 45,
+              runtimeSec: ep.runtime_sec !== undefined ? ep.runtime_sec : (ep.runtimeSec || 0),
               synopsis: ep.synopsis || "",
               video_url: ep.video_url || ep.videoUrl || "",
               thumbnail_url: ep.thumbnail_url || "",

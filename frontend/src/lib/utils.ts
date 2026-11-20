@@ -5,12 +5,19 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-export function formatRuntime(min: number) {
-  const h = Math.floor(min / 60);
-  const m = min % 60;
-  if (h <= 0) return `${m}m`;
-  if (m === 0) return `${h}h`;
-  return `${h}h ${m}m`;
+export function formatRuntime(min: number, sec: number = 0) {
+  const totalSec = Math.max(0, Math.round((Number(min) || 0) * 60 + (Number(sec) || 0)));
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  if (h <= 0) {
+    if (m === 0 && s > 0) return `${s}s`;
+    if (s === 0) return `${m}m`;
+    return `${m}m ${s}s`;
+  }
+  if (m === 0 && s === 0) return `${h}h`;
+  if (s === 0) return `${h}h ${m}m`;
+  return `${h}h ${m}m ${s}s`;
 }
 
 export function formatClock(seconds: number) {

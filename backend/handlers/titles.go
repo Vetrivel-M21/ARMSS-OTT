@@ -18,7 +18,7 @@ func ListTitles(w http.ResponseWriter, r *http.Request) {
 	kind := r.URL.Query().Get("kind")
 	kidsOnly := r.URL.Query().Get("kids") == "true"
 
-	query := "SELECT id, title, kind, year, maturity, runtime_min, match_percent, logline, synopsis, poster, backdrop, trailer, video_url, tone, original, kids, required_tier, genres, badges FROM titles WHERE 1=1"
+	query := "SELECT id, title, kind, year, maturity, runtime_min, COALESCE(runtime_sec, 0), match_percent, logline, synopsis, poster, backdrop, trailer, video_url, tone, original, kids, required_tier, genres, badges FROM titles WHERE 1=1"
 	args := []interface{}{}
 
 	if kind != "" {
@@ -31,8 +31,8 @@ func ListTitles(w http.ResponseWriter, r *http.Request) {
 
 	rows, err := database.DB.Query(query, args...)
 	if err != nil {
-		// Fallback for older database before video_url migration
-		fallbackQuery := "SELECT id, title, kind, year, maturity, runtime_min, match_percent, logline, synopsis, poster, backdrop, trailer, tone, original, kids, required_tier, genres, badges FROM titles WHERE 1=1"
+		// Fallback query without runtime_sec
+		fallbackQuery := "SELECT id, title, kind, year, maturity, runtime_min, match_percent, logline, synopsis, poster, backdrop, trailer, video_url, tone, original, kids, required_tier, genres, badges FROM titles WHERE 1=1"
 		if kind != "" {
 			fallbackQuery += " AND kind = ?"
 		}
@@ -41,8 +41,19 @@ func ListTitles(w http.ResponseWriter, r *http.Request) {
 		}
 		rows, err = database.DB.Query(fallbackQuery, args...)
 		if err != nil {
-			http.Error(w, `{"error":"failed querying titles"}`, http.StatusInternalServerError)
-			return
+			// Fallback for older database before video_url migration
+			legacyQuery := "SELECT id, title, kind, year, maturity, runtime_min, match_percent, logline, synopsis, poster, backdrop, trailer, tone, original, kids, required_tier, genres, badges FROM titles WHERE 1=1"
+			if kind != "" {
+				legacyQuery += " AND kind = ?"
+			}
+			if kidsOnly {
+				legacyQuery += " AND kids = 1"
+			}
+			rows, err = database.DB.Query(legacyQuery, args...)
+			if err != nil {
+				http.Error(w, `{"error":"failed querying titles"}`, http.StatusInternalServerError)
+				return
+			}
 		}
 	}
 	defer rows.Close()
@@ -53,7 +64,14 @@ func ListTitles(w http.ResponseWriter, r *http.Request) {
 		var genresStr, badgesStr string
 		var trailer, videoURL sql.NullString
 		cols, _ := rows.Columns()
-		if len(cols) >= 19 {
+		if len(cols) >= 20 {
+			err = rows.Scan(
+				&t.ID, &t.Title, &t.Kind, &t.Year, &t.Maturity, &t.RuntimeMin, &t.RuntimeSec,
+				&t.Match, &t.Logline, &t.Synopsis, &t.Poster, &t.Backdrop,
+				&trailer, &videoURL, &t.Tone, &t.Original, &t.Kids, &t.RequiredTier,
+				&genresStr, &badgesStr,
+			)
+		} else if len(cols) >= 19 {
 			err = rows.Scan(
 				&t.ID, &t.Title, &t.Kind, &t.Year, &t.Maturity, &t.RuntimeMin,
 				&t.Match, &t.Logline, &t.Synopsis, &t.Poster, &t.Backdrop,
@@ -100,35 +118,48 @@ func GetTitle(w http.ResponseWriter, r *http.Request) {
 	var trailer, videoURL sql.NullString
 
 	err := database.DB.QueryRow(
-		`SELECT id, title, kind, year, maturity, runtime_min, match_percent, logline, synopsis, poster, backdrop, trailer, video_url, tone, original, kids, required_tier, genres, badges 
+		`SELECT id, title, kind, year, maturity, runtime_min, COALESCE(runtime_sec, 0), match_percent, logline, synopsis, poster, backdrop, trailer, video_url, tone, original, kids, required_tier, genres, badges 
 		 FROM titles WHERE id = ?`,
 		id,
 	).Scan(
-		&t.ID, &t.Title, &t.Kind, &t.Year, &t.Maturity, &t.RuntimeMin,
+		&t.ID, &t.Title, &t.Kind, &t.Year, &t.Maturity, &t.RuntimeMin, &t.RuntimeSec,
 		&t.Match, &t.Logline, &t.Synopsis, &t.Poster, &t.Backdrop,
 		&trailer, &videoURL, &t.Tone, &t.Original, &t.Kids, &t.RequiredTier,
 		&genresStr, &badgesStr,
 	)
 
 	if err != nil {
-		// Fallback query if video_url column is missing
+		// Fallback query without runtime_sec
 		err = database.DB.QueryRow(
-			`SELECT id, title, kind, year, maturity, runtime_min, match_percent, logline, synopsis, poster, backdrop, trailer, tone, original, kids, required_tier, genres, badges 
+			`SELECT id, title, kind, year, maturity, runtime_min, match_percent, logline, synopsis, poster, backdrop, trailer, video_url, tone, original, kids, required_tier, genres, badges 
 			 FROM titles WHERE id = ?`,
 			id,
 		).Scan(
 			&t.ID, &t.Title, &t.Kind, &t.Year, &t.Maturity, &t.RuntimeMin,
 			&t.Match, &t.Logline, &t.Synopsis, &t.Poster, &t.Backdrop,
-			&trailer, &t.Tone, &t.Original, &t.Kids, &t.RequiredTier,
+			&trailer, &videoURL, &t.Tone, &t.Original, &t.Kids, &t.RequiredTier,
 			&genresStr, &badgesStr,
 		)
 		if err != nil {
-			if err == sql.ErrNoRows {
-				http.Error(w, `{"error":"title not found"}`, http.StatusNotFound)
+			// Fallback query if video_url column is missing
+			err = database.DB.QueryRow(
+				`SELECT id, title, kind, year, maturity, runtime_min, match_percent, logline, synopsis, poster, backdrop, trailer, tone, original, kids, required_tier, genres, badges 
+				 FROM titles WHERE id = ?`,
+				id,
+			).Scan(
+				&t.ID, &t.Title, &t.Kind, &t.Year, &t.Maturity, &t.RuntimeMin,
+				&t.Match, &t.Logline, &t.Synopsis, &t.Poster, &t.Backdrop,
+				&trailer, &t.Tone, &t.Original, &t.Kids, &t.RequiredTier,
+				&genresStr, &badgesStr,
+			)
+			if err != nil {
+				if err == sql.ErrNoRows {
+					http.Error(w, `{"error":"title not found"}`, http.StatusNotFound)
+					return
+				}
+				http.Error(w, `{"error":"database error"}`, http.StatusInternalServerError)
 				return
 			}
-			http.Error(w, `{"error":"database error"}`, http.StatusInternalServerError)
-			return
 		}
 	}
 	if trailer.Valid {
@@ -172,19 +203,35 @@ func PublicListEpisodes(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	episodes := []models.Episode{}
 	rows, err := database.DB.Query(
-		"SELECT id, title_id, season_number, episode_number, title, runtime_min, synopsis, video_url, thumbnail_url, created_at FROM episodes WHERE title_id = ? ORDER BY season_number ASC, episode_number ASC",
+		"SELECT id, title_id, season_number, episode_number, title, runtime_min, COALESCE(runtime_sec, 0), synopsis, video_url, thumbnail_url, created_at FROM episodes WHERE title_id = ? ORDER BY season_number ASC, episode_number ASC",
 		id,
 	)
+	if err != nil {
+		rows, err = database.DB.Query(
+			"SELECT id, title_id, season_number, episode_number, title, runtime_min, synopsis, video_url, thumbnail_url, created_at FROM episodes WHERE title_id = ? ORDER BY season_number ASC, episode_number ASC",
+			id,
+		)
+	}
 	if err == nil {
 		defer rows.Close()
 		for rows.Next() {
 			var ep models.Episode
 			var thumb sql.NullString
-			if scanErr := rows.Scan(&ep.ID, &ep.TitleID, &ep.SeasonNumber, &ep.EpisodeNumber, &ep.Title, &ep.RuntimeMin, &ep.Synopsis, &ep.VideoURL, &thumb, &ep.CreatedAt); scanErr == nil {
-				if thumb.Valid {
-					ep.ThumbnailURL = thumb.String
+			cols, _ := rows.Columns()
+			if len(cols) >= 11 {
+				if scanErr := rows.Scan(&ep.ID, &ep.TitleID, &ep.SeasonNumber, &ep.EpisodeNumber, &ep.Title, &ep.RuntimeMin, &ep.RuntimeSec, &ep.Synopsis, &ep.VideoURL, &thumb, &ep.CreatedAt); scanErr == nil {
+					if thumb.Valid {
+						ep.ThumbnailURL = thumb.String
+					}
+					episodes = append(episodes, ep)
 				}
-				episodes = append(episodes, ep)
+			} else {
+				if scanErr := rows.Scan(&ep.ID, &ep.TitleID, &ep.SeasonNumber, &ep.EpisodeNumber, &ep.Title, &ep.RuntimeMin, &ep.Synopsis, &ep.VideoURL, &thumb, &ep.CreatedAt); scanErr == nil {
+					if thumb.Valid {
+						ep.ThumbnailURL = thumb.String
+					}
+					episodes = append(episodes, ep)
+				}
 			}
 		}
 	}

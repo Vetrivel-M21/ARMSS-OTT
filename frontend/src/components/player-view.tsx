@@ -27,7 +27,7 @@ import type { Episode, Title } from "@/lib/catalog";
 import { getTitle } from "@/lib/catalog";
 import { useAether } from "@/lib/store";
 import { api } from "@/lib/api";
-import { clamp, cn, formatClock } from "@/lib/utils";
+import { clamp, cn, formatClock, formatRuntime } from "@/lib/utils";
 import { BackdropArt } from "./poster";
 import { Button } from "./ui/button";
 
@@ -84,7 +84,9 @@ export function PlayerView({
   const navigate = useNavigate();
   const setProgress = useAether((s) => s.setProgress);
   const saved = useAether((s) => s.progressFor(title.id));
-  const fallbackDuration = (episode?.runtime ?? title.runtimeMin) * 60;
+  const fallbackDuration = episode
+    ? (Number(episode.runtime) || 0) * 60 + (Number(episode.runtimeSec) || 0)
+    : (Number(title.runtimeMin) || 0) * 60 + (Number(title.runtimeSec) || 0);
   const isLive = title.kind === "live";
 
   // If episode has a video URL, use it; otherwise check title videoUrl or trailer; fallback to sample
@@ -1321,7 +1323,7 @@ export function PlayerView({
                   >
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-semibold text-accent">
-                        Episode {ep.number} · {ep.runtime} min
+                        Episode {ep.number} · {formatRuntime(ep.runtime, ep.runtimeSec || 0)}
                       </span>
                       {isCurrent && (
                         <span className="text-[10px] uppercase font-bold text-accent bg-accent/20 px-2 py-0.5 rounded-full">

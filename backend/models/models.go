@@ -88,6 +88,7 @@ type Episode struct {
 	EpisodeNumber int      `json:"episode_number"`
 	Title        string    `json:"title"`
 	RuntimeMin   int       `json:"runtime_min"`
+	RuntimeSec   int       `json:"runtime_sec"`
 	Synopsis     string    `json:"synopsis"`
 	VideoURL     string    `json:"video_url"`
 	ThumbnailURL string    `json:"thumbnail_url,omitempty"`
@@ -102,6 +103,7 @@ type Title struct {
 	Year        int              `json:"year"`
 	Maturity    string           `json:"maturity"` // "G", "PG", "12", "15", "18"
 	RuntimeMin  int              `json:"runtime_min"`
+	RuntimeSec  int              `json:"runtime_sec"`
 	Match       int              `json:"match"`
 	Logline     string           `json:"logline"`
 	Synopsis    string           `json:"synopsis"`

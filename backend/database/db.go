@@ -140,6 +140,7 @@ func createTables(driver string) error {
 		year INT NOT NULL,
 		maturity VARCHAR(20) NOT NULL,
 		runtime_min INT NOT NULL,
+		runtime_sec INT NOT NULL DEFAULT 0,
 		match_percent INT NOT NULL,
 		logline TEXT NOT NULL,
 		synopsis TEXT NOT NULL,
@@ -162,6 +163,7 @@ func createTables(driver string) error {
 		episode_number INT NOT NULL,
 		title VARCHAR(255) NOT NULL,
 		runtime_min INT NOT NULL DEFAULT 0,
+		runtime_sec INT NOT NULL DEFAULT 0,
 		synopsis TEXT,
 		video_url TEXT NOT NULL,
 		thumbnail_url TEXT,
@@ -305,8 +307,10 @@ func runMigrations(driver string) {
 		addColumnIfNotExists(DB, "users", "last_active_at", "DATETIME NULL")
 		addColumnIfNotExists(DB, "titles", "video_url", "TEXT NULL")
 		addColumnIfNotExists(DB, "titles", "trailer", "TEXT NULL")
+		addColumnIfNotExists(DB, "titles", "runtime_sec", "INT NOT NULL DEFAULT 0")
 		addColumnIfNotExists(DB, "episodes", "video_url", "TEXT NOT NULL")
 		addColumnIfNotExists(DB, "episodes", "thumbnail_url", "TEXT NULL")
+		addColumnIfNotExists(DB, "episodes", "runtime_sec", "INT NOT NULL DEFAULT 0")
 		_, _ = DB.Exec("ALTER TABLE titles MODIFY COLUMN poster MEDIUMTEXT NOT NULL")
 		_, _ = DB.Exec("ALTER TABLE titles MODIFY COLUMN backdrop MEDIUMTEXT NOT NULL")
 		_, _ = DB.Exec("ALTER TABLE titles MODIFY COLUMN trailer MEDIUMTEXT NULL")
@@ -317,6 +321,8 @@ func runMigrations(driver string) {
 		_, _ = DB.Exec("ALTER TABLE titles MODIFY COLUMN required_tier VARCHAR(50) NOT NULL DEFAULT 'free'")
 	} else {
 		_, _ = DB.Exec("ALTER TABLE titles ADD COLUMN video_url TEXT")
+		_, _ = DB.Exec("ALTER TABLE titles ADD COLUMN runtime_sec INT DEFAULT 0")
+		_, _ = DB.Exec("ALTER TABLE episodes ADD COLUMN runtime_sec INT DEFAULT 0")
 	}
 
 	// Additive plan-based access control migrations
