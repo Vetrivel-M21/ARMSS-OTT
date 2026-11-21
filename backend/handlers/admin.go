@@ -280,6 +280,25 @@ func AdminUpdateTitle(w http.ResponseWriter, r *http.Request) {
 	var setClauses []string
 	var args []interface{}
 
+	if (req.VideoURL != nil && strings.TrimSpace(*req.VideoURL) != "") || (req.Trailer != nil && strings.TrimSpace(*req.Trailer) != "") {
+		if req.RuntimeMin == nil || *req.RuntimeMin == 0 || *req.RuntimeMin == 120 {
+			vURL := ""
+			tURL := ""
+			if req.VideoURL != nil {
+				vURL = *req.VideoURL
+			}
+			if req.Trailer != nil {
+				tURL = *req.Trailer
+			}
+			var pMin, pSec int
+			autoProbeAndSetRuntime(&pMin, &pSec, vURL, tURL)
+			if pMin > 0 {
+				req.RuntimeMin = &pMin
+				req.RuntimeSec = &pSec
+			}
+		}
+	}
+
 	if req.Title != nil {
 		setClauses = append(setClauses, "title = ?")
 		args = append(args, *req.Title)
@@ -374,6 +393,62 @@ func AdminUpdateTitle(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "id": titleID})
 }
 
+func resolveUploadDiskPath(fileURL string) string {
+	cleanURL := strings.TrimSpace(fileURL)
+	if cleanURL == "" {
+		return ""
+	}
+	relName := strings.TrimPrefix(cleanURL, "/uploads/")
+	relName = strings.TrimPrefix(relName, "uploads/")
+	if relName == "" || strings.Contains(relName, "..") {
+		return ""
+	}
+
+	uploadsDir := os.Getenv("UPLOADS_DIR")
+	if uploadsDir == "" {
+		uploadsDir = filepath.Join("..", "frontend", "public", "uploads")
+		if _, err := os.Stat(uploadsDir); err != nil {
+			uploadsDir = filepath.Join("..", "public", "uploads")
+			if _, err := os.Stat(uploadsDir); err != nil {
+				uploadsDir = filepath.Join("public", "uploads")
+			}
+		}
+	}
+	return filepath.Join(uploadsDir, relName)
+}
+
+func autoProbeAndSetRuntime(runtimeMin *int, runtimeSec *int, videoURL, trailerURL string) {
+	candidate := videoURL
+	if strings.TrimSpace(candidate) == "" {
+		candidate = trailerURL
+	}
+	diskPath := resolveUploadDiskPath(candidate)
+	if diskPath == "" {
+		return
+	}
+	if _, err := os.Stat(diskPath); err != nil {
+		return
+	}
+
+	dur, err := media.ProbeDuration(diskPath)
+	if err != nil || dur <= 0 {
+		return
+	}
+
+	totalSec := int(dur + 0.5)
+	min := totalSec / 60
+	sec := totalSec % 60
+	if min == 0 && sec > 0 {
+		min = 1
+	}
+	if runtimeMin != nil {
+		*runtimeMin = min
+	}
+	if runtimeSec != nil {
+		*runtimeSec = sec
+	}
+}
+
 // AdminCreateTitle — POST /api/admin/titles
 func AdminCreateTitle(w http.ResponseWriter, r *http.Request) {
 	var req struct {
@@ -418,6 +493,9 @@ func AdminCreateTitle(w http.ResponseWriter, r *http.Request) {
 	}
 	if t.Year == 0 {
 		t.Year = time.Now().Year()
+	}
+	if t.RuntimeMin == 0 || t.RuntimeMin == 120 {
+		autoProbeAndSetRuntime(&t.RuntimeMin, &t.RuntimeSec, t.VideoURL, t.Trailer)
 	}
 	if t.RuntimeMin == 0 {
 		t.RuntimeMin = 120
@@ -537,6 +615,9 @@ func AdminCreateEpisode(w http.ResponseWriter, r *http.Request) {
 	if ep.EpisodeNumber <= 0 {
 		ep.EpisodeNumber = 1
 	}
+	if ep.RuntimeMin == 0 || ep.RuntimeMin == 120 {
+		autoProbeAndSetRuntime(&ep.RuntimeMin, &ep.RuntimeSec, ep.VideoURL, "")
+	}
 	ep.TitleID = titleID
 	ep.CreatedAt = time.Now()
 
@@ -589,6 +670,17 @@ func AdminUpdateEpisode(w http.ResponseWriter, r *http.Request) {
 		setClauses = append(setClauses, "episode_number = ?")
 		args = append(args, *req.EpisodeNumber)
 	}
+	if req.VideoURL != nil && strings.TrimSpace(*req.VideoURL) != "" {
+		if req.RuntimeMin == nil || *req.RuntimeMin == 0 || *req.RuntimeMin == 120 {
+			var pMin, pSec int
+			autoProbeAndSetRuntime(&pMin, &pSec, *req.VideoURL, "")
+			if pMin > 0 {
+				req.RuntimeMin = &pMin
+				req.RuntimeSec = &pSec
+			}
+		}
+	}
+
 	if req.Title != nil {
 		setClauses = append(setClauses, "title = ?")
 		args = append(args, *req.Title)

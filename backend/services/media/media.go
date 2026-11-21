@@ -181,8 +181,9 @@ func InspectTopLevelAtoms(r io.ReadSeeker) ([]AtomInfo, error) {
 	return atoms, nil
 }
 
-// IsFragmentedOrNoFaststart detects if an MP4 file contains 'moof' fragments
-// or if its 'moov' atom is placed AFTER 'mdat' (no faststart).
+// IsFragmentedOrNoFaststart detects if an MP4 file contains 'moof' fragments,
+// if its 'moov' atom is placed AFTER 'mdat' (no faststart),
+// or if its 'mvhd' header specifies a duration of 0 (fragmented/unindexed).
 // Returns true if the file needs normalization.
 func IsFragmentedOrNoFaststart(path string) bool {
 	f, err := os.Open(path)
@@ -198,6 +199,7 @@ func IsFragmentedOrNoFaststart(path string) bool {
 
 	var mdatOffset int64 = -1
 	var moovOffset int64 = -1
+	var moovSize uint64 = 0
 	hasMoof := false
 
 	for _, a := range atoms {
@@ -209,6 +211,7 @@ func IsFragmentedOrNoFaststart(path string) bool {
 		}
 		if a.Type == "moov" && moovOffset == -1 {
 			moovOffset = a.Offset
+			moovSize = a.Size
 		}
 	}
 
@@ -222,5 +225,59 @@ func IsFragmentedOrNoFaststart(path string) bool {
 		return true
 	}
 
+	// 3. Inspect mvhd duration inside moov: if duration is 0, ExoPlayer treats it as unseekable live stream
+	if moovOffset >= 0 {
+		readLen := int64(moovSize)
+		if readLen <= 0 || readLen > 65536 {
+			readLen = 65536
+		}
+		moovBuf := make([]byte, readLen)
+		if _, err := f.Seek(moovOffset, io.SeekStart); err == nil {
+			if n, rErr := io.ReadFull(f, moovBuf); rErr == nil || n > 8 {
+				if isMvhdDurationZero(moovBuf[:n]) {
+					return true
+				}
+			}
+		}
+	}
+
+	return false
+}
+
+func isMvhdDurationZero(buf []byte) bool {
+	idx := bytes.Index(buf, []byte("mvhd"))
+	if idx == -1 {
+		return false
+	}
+	// 'mvhd' box layout:
+	// 4 bytes: size (at idx-4)
+	// 4 bytes: 'mvhd' (at idx)
+	// 1 byte:  version (at idx+4)
+	// 3 bytes: flags (at idx+5)
+	if idx+4 >= len(buf) {
+		return false
+	}
+	version := buf[idx+4]
+	if version == 0 {
+		// version 0 (32-bit):
+		// creation_time (4), mod_time (4), timescale (4), duration (4)
+		// duration starts at idx + 4 + 4 + 4 + 4 + 4 = idx + 20
+		if idx+24 <= len(buf) {
+			duration := binary.BigEndian.Uint32(buf[idx+20 : idx+24])
+			if duration == 0 {
+				return true
+			}
+		}
+	} else if version == 1 {
+		// version 1 (64-bit):
+		// creation_time (8), mod_time (8), timescale (4), duration (8)
+		// duration starts at idx + 4 + 4 + 8 + 8 + 4 = idx + 28
+		if idx+36 <= len(buf) {
+			duration := binary.BigEndian.Uint64(buf[idx+28 : idx+36])
+			if duration == 0 {
+				return true
+			}
+		}
+	}
 	return false
 }

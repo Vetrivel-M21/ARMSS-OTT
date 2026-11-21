@@ -76,4 +76,29 @@ func TestIsFragmentedOrNoFaststart(t *testing.T) {
 	if !IsFragmentedOrNoFaststart(fragmentedPath) {
 		t.Errorf("fragmented MP4 (with moof) should need normalization")
 	}
+
+	// 4. File with moov before mdat BUT zero duration in mvhd (like Episode 2 & 3)
+	zeroDurPath := filepath.Join(tmpDir, "zerodur.mp4")
+	var zdData []byte
+	zdData = append(zdData, createFakeAtom("ftyp", 16)...)
+	mvhdBuf := make([]byte, 108)
+	binary.BigEndian.PutUint32(mvhdBuf[0:4], 108)
+	copy(mvhdBuf[4:8], []byte("mvhd"))
+	mvhdBuf[8] = 0                                   // version 0
+	binary.BigEndian.PutUint32(mvhdBuf[20:24], 1000) // timescale
+	binary.BigEndian.PutUint32(mvhdBuf[24:28], 0)    // duration = 0
+
+	moovHeader := make([]byte, 8)
+	binary.BigEndian.PutUint32(moovHeader[0:4], uint32(8+len(mvhdBuf)))
+	copy(moovHeader[4:8], []byte("moov"))
+
+	zdData = append(zdData, moovHeader...)
+	zdData = append(zdData, mvhdBuf...)
+	zdData = append(zdData, createFakeAtom("mdat", 64)...)
+	if err := os.WriteFile(zeroDurPath, zdData, 0644); err != nil {
+		t.Fatal(err)
+	}
+	if !IsFragmentedOrNoFaststart(zeroDurPath) {
+		t.Errorf("MP4 with moov at front but zero duration in mvhd should need normalization")
+	}
 }
